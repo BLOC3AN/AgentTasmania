@@ -144,21 +144,29 @@ npm run dev
 ## 🎯 Tính năng
 
 ### Core Features
-- ✅ **Real-time Chat**: WebSocket-based communication
-- ✅ **AI Agent**: Gemini LLM integration
-- ✅ **Vector Database**: Qdrant cloud integration
+- ✅ **Academic Writing Assistant**: AI chuyên về viết học thuật
+- ✅ **Real-time Chat**: WebSocket với agent routing
+- ✅ **Multi-Agent Support**: Academic Writing, General Chat, Research Assistant
+- ✅ **AI Agent**: Gemini LLM integration với context switching
+- ✅ **Vector Database**: Qdrant với hybrid search (dense + sparse)
 - ✅ **Microservices**: Scalable architecture
-- ✅ **Health Monitoring**: Service health tracking
-- ✅ **Docker Ready**: Full containerization
+- ✅ **Health Monitoring**: Comprehensive service monitoring
+- ✅ **Docker Ready**: Full containerization với hot reload
 
 ### Services
-- ✅ **AI Core**: LLM processing & agent logic
+- ✅ **AI Core**: LLM processing & academic writing logic
 - ✅ **MCP Server**: Tool discovery & execution
-- ✅ **Database**: Vector search & storage + **Hybrid Search**
-- ✅ **Embedding**: Text embedding service
-- ✅ **WebSocket**: Real-time communication
-- ✅ **Monitor**: System health & logging
-- ✅ **Frontend**: React TypeScript UI
+- ✅ **Vector Database**: Qdrant với hybrid search (BM25 + embeddings)
+- ✅ **Embedding**: Text embedding service với model caching
+- ✅ **WebSocket**: Real-time communication với agent routing
+- ✅ **Monitor**: System health & logging dashboard
+- ✅ **Frontend**: Next.js TypeScript UI với hot reload
+
+### Academic Writing Features
+- ✅ **Agent Routing**: Tự động route chat qua Academic Writing Assistant
+- ✅ **Session Management**: Separate sessions cho từng agent type
+- ✅ **Context Switching**: Chuyển đổi giữa academic writing và general chat
+- ✅ **Vietnamese Support**: Hỗ trợ tiếng Việt cho academic writing
 
 ## 🔧 Công nghệ sử dụng
 
@@ -171,15 +179,16 @@ npm run dev
 - **Docker**: Containerization
 
 ### Frontend
-- **React 18**: UI framework
+- **Next.js 15**: React framework với App Router
 - **TypeScript**: Type safety
-- **Vite**: Build tool
-- **WebSocket API**: Real-time connection
+- **Tailwind CSS**: Styling framework
+- **WebSocket API**: Real-time connection với agent routing
 
 ### Infrastructure
-- **Docker Compose**: Orchestration
-- **Nginx**: Reverse proxy
-- **Health Checks**: Service monitoring
+- **Docker Compose**: Orchestration với development/production modes
+- **Dozzle**: Real-time log viewer
+- **Health Checks**: Comprehensive service monitoring
+- **Hot Reload**: Development mode với volume mounts
 
 ## 📊 Monitoring & Logs
 
@@ -187,9 +196,11 @@ npm run dev
 ```bash
 curl http://localhost:8000/health  # AI Core
 curl http://localhost:8001/health  # MCP Server
-curl http://localhost:8002/health  # Database
-curl http://localhost:8003/health  # WebSocket
+curl http://localhost:8002/health  # Vector Database
+curl http://localhost:8003/health  # WebSocket (với agent distribution)
 curl http://localhost:8004/health  # Monitor
+curl http://localhost:8005/health  # Embedding Service
+curl http://localhost:3000/api/chat # Frontend API Health
 ```
 
 ### System Health Dashboard
@@ -243,41 +254,127 @@ curl -X POST http://localhost:8002/hybrid-search \
 
 ### Service Logs
 ```bash
-docker-compose logs -f ai-core
-docker-compose logs -f mcp-server
-docker-compose logs -f database
-docker-compose logs -f websocket
-docker-compose logs -f monitor
-docker-compose logs -f frontend
+# Individual service logs
+docker compose logs -f ai-core
+docker compose logs -f mcp-server
+docker compose logs -f vectordb
+docker compose logs -f websocket
+docker compose logs -f monitor
+docker compose logs -f frontend
+docker compose logs -f embedding
+
+# Real-time log viewer (recommended)
+# Access: http://localhost:5555
+```
+
+## 🤖 Academic Writing Assistant Usage
+
+### WebSocket Connection
+```javascript
+// Connect to WebSocket
+const ws = new WebSocket('ws://localhost:8003/ws');
+
+// Switch to Academic Writing Assistant
+ws.send(JSON.stringify({
+  type: "set_agent",
+  data: { agent_type: "academic_writing" }
+}));
+
+// Send academic writing query
+ws.send(JSON.stringify({
+  type: "user_message",
+  data: {
+    user_input: "Help me write an introduction for my research paper",
+    agent_type: "academic_writing",
+    user_id: "student123"
+  }
+}));
+```
+
+### Available Agent Types
+- **`academic_writing`**: Academic Writing Assistant (default)
+- **`general_conversation`**: General conversation
+- **`research_assistant`**: Research assistant
+
+### Frontend API
+```bash
+# Test chat API
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -H "x-conversation-id: test-session" \
+  -d '{"message": "Help me write an academic essay"}'
 ```
 
 ## 🔧 Troubleshooting
 
 ### Common Issues
 
-1. **WebSocket Connection Failed**
-   - Check if websocket service is running: `docker-compose ps`
+1. **Frontend API Connection Failed**
+   - Check if AI Core service is running: `docker compose ps`
+   - Verify internal Docker network: `docker compose logs frontend`
+   - Test API directly: `curl http://localhost:8000/health`
+
+2. **WebSocket Connection Failed**
+   - Check if websocket service is running: `docker compose ps`
    - Verify port 8003 is accessible
+   - Check agent routing: `curl http://localhost:8003/health`
 
-2. **Qdrant Connection Error**
+3. **Qdrant Connection Error**
    - Verify QDRANT_URL and QDRANT_CLOUD_API_KEY in .env
-   - Check database service logs: `docker-compose logs database`
+   - Check database service logs: `docker compose logs vectordb`
+   - Test hybrid search: `curl http://localhost:8002/health`
 
-3. **Gemini API Error**
+4. **Gemini API Error**
    - Verify GOOGLE_API_KEY in .env
-   - Check AI Core service logs: `docker-compose logs ai-core`
+   - Check AI Core service logs: `docker compose logs ai-core`
+
+5. **Frontend Hot Reload Not Working**
+   - Check volume mounts in docker-compose.yml
+   - Verify file permissions: `docker compose logs frontend`
 
 ### Restart Services
 ```bash
-docker-compose restart [service-name]
-# or restart all
-docker-compose down && docker-compose up -d
+# Restart specific service
+docker compose restart [service-name]
+
+# Restart all services
+docker compose down && docker compose up -d
+
+# Full rebuild (recommended after code changes)
+docker compose down -v && docker compose up -d --build
+
+# Restart only frontend (quick development)
+docker compose stop frontend && docker compose up -d --build frontend
 ```
 
 ## 📝 Development Notes
 
-- **No Helper Functions**: Clean, direct implementation
-- **Fixed Dependencies**: Locked versions for stability
+### Architecture Decisions
+- **Academic Writing Focus**: Specialized AI agent cho academic writing
+- **Agent Routing**: WebSocket tự động route qua Academic Writing Assistant
+- **Hot Reload**: Development mode với volume mounts cho rapid development
 - **Microservice Communication**: HTTP/WebSocket between services
-- **Error Handling**: Comprehensive logging and monitoring
-- **Scalable Design**: Easy to add new services
+- **Error Handling**: Comprehensive logging và monitoring
+- **Scalable Design**: Easy to add new agent types và services
+
+### Development Workflow
+```bash
+# Development mode (recommended)
+docker compose down -v && docker compose up -d --build
+
+# Check all services
+docker compose ps
+
+# View logs in real-time
+# Browser: http://localhost:5555
+
+# Test Academic Writing Assistant
+# Browser: http://localhost:3000
+```
+
+### Code Structure
+- **Clean Implementation**: No helper functions, direct approach
+- **Fixed Dependencies**: Locked versions for stability
+- **TypeScript**: Full type safety trong frontend
+- **Pydantic**: Schema validation trong backend services
+- **Environment Variables**: Flexible configuration
