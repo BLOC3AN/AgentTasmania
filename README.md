@@ -1,157 +1,283 @@
-# UTAS Writing Practice - Frontend Service
+# AgentTasmania - AI Academic Writing Assistant
 
-A Next.js application for the University of Tasmania's Writing in Practice module (UPP014), featuring an interactive academic writing assistant.
+Một hệ thống AI Agent chuyên về Academic Writing được xây dựng theo kiến trúc microservices với Next.js frontend, Python backend services, và WebSocket real-time communication.
 
-## Project Structure
+## 🏗️ Kiến trúc Microservices
 
 ```
-├── frontend/                 # Frontend Next.js application
-│   ├── src/                 # Source code
-│   │   ├── app/            # Next.js app directory
-│   │   └── components/     # React components
-│   ├── public/             # Static assets
-│   ├── Dockerfile          # Production Docker configuration
-│   ├── Dockerfile.dev      # Development Docker configuration
-│   └── package.json        # Frontend dependencies
-├── docker-compose.yml      # Production Docker Compose
-├── docker-compose.dev.yml  # Development Docker Compose
-└── README.md              # This file
+AgentTasmania/
+├── AI_core/                    # AI Agent Service (Port 8000)
+│   ├── src/
+│   │   ├── llms/              # LLM integrations (Gemini)
+│   │   ├── mcp_client/        # MCP client tools
+│   │   ├── utils/             # Utilities & Logger
+│   │   └── versions/          # API versioning
+│   ├── main.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── MCP_server/                 # MCP API Service (Port 8001)
+│   ├── schema/                # Tool schemas
+│   ├── utils/                 # Logger utilities
+│   ├── server.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── database_service/           # Vector Database Service (Port 8002)
+│   ├── src/
+│   │   ├── database/          # Qdrant client
+│   │   ├── models/            # Pydantic schemas
+│   │   └── utils/             # Logger
+│   ├── main.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── websocket_service/          # WebSocket Service (Port 8003)
+│   ├── main.py                # Academic Writing Assistant routing
+│   ├── requirements.txt
+│   └── Dockerfile
+├── monitor_service/            # Monitor Service (Port 8004)
+│   ├── main.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── embedding_service/          # Embedding Service (Port 8005)
+│   ├── src/
+│   │   ├── embedding/         # Model management
+│   │   └── models/            # Schemas
+│   ├── main.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend_service/           # Next.js Frontend (Port 3000)
+│   ├── src/
+│   │   ├── app/               # Next.js App Router
+│   │   ├── components/        # React components
+│   │   └── types/             # TypeScript types
+│   ├── Dockerfile             # Production build
+│   ├── Dockerfile.dev         # Development with hot reload
+│   ├── package.json
+│   └── next.config.ts
+├── docker-compose.yml          # Orchestration
+├── deploy.sh                   # Deployment script
+└── .env                        # Environment variables
 ```
 
-## Prerequisites
+## 🚀 Cách chạy
 
-- Docker and Docker Compose installed on your system
-- Node.js 18+ (for local development)
+### Yêu cầu hệ thống
+- Docker & Docker Compose
+- Git
 
-## Quick Start with Docker
+### Quick Start
 
-### Production Build
+1. **Clone repository:**
+```bash
+git clone <repository-url>
+cd AgentTasmania
+```
 
-1. **Build and run the frontend service:**
-   ```bash
-   docker-compose up --build
-   ```
+2. **Cấu hình environment:**
+```bash
+# Đảm bảo file .env có đầy đủ thông tin:
+# - GOOGLE_API_KEY (Gemini API)
+# - QDRANT_URL & QDRANT_CLOUD_API_KEY (cho vector database)
+# - NEXT_PUBLIC_API_URL & NEXT_PUBLIC_WEBSOCKET_URL (cho frontend)
+```
 
-2. **Access the application:**
-   - Frontend: http://localhost:3000
+3. **Deploy toàn bộ hệ thống:**
+```bash
+# Khởi động tất cả services
+docker compose down -v && docker compose up -d --build
 
-3. **Stop the services:**
-   ```bash
-   docker-compose down
-   ```
+# Hoặc sử dụng script deploy
+chmod +x deploy.sh
+./deploy.sh
+```
+
+### Service URLs
+- **Frontend**: http://localhost:3000 (Next.js Academic Writing Interface)
+- **AI Core**: http://localhost:8000 (Academic Writing Assistant API)
+- **MCP Server**: http://localhost:8001 (Tool Discovery & Execution)
+- **Vector Database**: http://localhost:8002 (Qdrant + Hybrid Search)
+- **WebSocket**: ws://localhost:8003 (Real-time Chat with Agent Routing)
+- **Monitor**: http://localhost:8004 (System Health Dashboard)
+- **Embedding**: http://localhost:8005 (Text Embedding Service)
+- **Logs**: http://localhost:5555 (Dozzle Log Viewer)
 
 ### Development Mode
 
-1. **Run in development mode with hot reloading:**
-   ```bash
-   docker-compose -f docker-compose.dev.yml up --build
-   ```
+Để chạy từng service riêng lẻ:
 
-2. **Access the application:**
-   - Frontend: http://localhost:3000
-
-## Manual Docker Commands
-
-### Build Frontend Image
 ```bash
-cd frontend
-docker build -t utas-writing-practice-frontend .
+# AI Core
+cd AI_core
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# MCP Server
+cd MCP_server
+pip install -r requirements.txt
+uvicorn server:app --host 0.0.0.0 --port 8001
+
+# Database Service
+cd database_service
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8002
+
+# WebSocket Service
+cd websocket_service
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8003
+
+# Monitor Service
+cd monitor_service
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8004
+
+# Embedding Service
+cd embedding_service
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8005
+
+# Frontend (Next.js)
+cd frontend_service
+npm install
+npm run dev
 ```
 
-### Run Frontend Container
+## 🎯 Tính năng
+
+### Core Features
+- ✅ **Real-time Chat**: WebSocket-based communication
+- ✅ **AI Agent**: Gemini LLM integration
+- ✅ **Vector Database**: Qdrant cloud integration
+- ✅ **Microservices**: Scalable architecture
+- ✅ **Health Monitoring**: Service health tracking
+- ✅ **Docker Ready**: Full containerization
+
+### Services
+- ✅ **AI Core**: LLM processing & agent logic
+- ✅ **MCP Server**: Tool discovery & execution
+- ✅ **Database**: Vector search & storage + **Hybrid Search**
+- ✅ **Embedding**: Text embedding service
+- ✅ **WebSocket**: Real-time communication
+- ✅ **Monitor**: System health & logging
+- ✅ **Frontend**: React TypeScript UI
+
+## 🔧 Công nghệ sử dụng
+
+### Backend
+- **Python 3.11**: Core language
+- **FastAPI**: Web framework
+- **WebSockets**: Real-time communication
+- **Qdrant**: Vector database
+- **Gemini**: LLM provider
+- **Docker**: Containerization
+
+### Frontend
+- **React 18**: UI framework
+- **TypeScript**: Type safety
+- **Vite**: Build tool
+- **WebSocket API**: Real-time connection
+
+### Infrastructure
+- **Docker Compose**: Orchestration
+- **Nginx**: Reverse proxy
+- **Health Checks**: Service monitoring
+
+## 📊 Monitoring & Logs
+
+### Health Check Endpoints
 ```bash
-docker run -p 3000:3000 \
-  -e NEXT_PUBLIC_UNIVERSITY_NAME="University of Tasmania" \
-  -e NEXT_PUBLIC_MODULE_CODE="UPP014" \
-  -e NEXT_PUBLIC_MODULE_NAME="Writing in Practice" \
-  utas-writing-practice-frontend
+curl http://localhost:8000/health  # AI Core
+curl http://localhost:8001/health  # MCP Server
+curl http://localhost:8002/health  # Database
+curl http://localhost:8003/health  # WebSocket
+curl http://localhost:8004/health  # Monitor
 ```
 
-## Local Development (without Docker)
-
-1. **Navigate to frontend directory:**
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Run development server:**
-   ```bash
-   npm run dev
-   ```
-
-4. **Build for production:**
-   ```bash
-   npm run build
-   npm start
-   ```
-
-## Environment Variables
-
-The following environment variables can be configured:
-
-- `NEXT_PUBLIC_UNIVERSITY_NAME`: University name (default: "University of Tasmania")
-- `NEXT_PUBLIC_MODULE_CODE`: Module code (default: "UPP014")
-- `NEXT_PUBLIC_MODULE_NAME`: Module name (default: "Writing in Practice")
-
-## Features
-
-- **Interactive Learning Module**: Comprehensive content about academic writing and source integration
-- **Chat Assistant**: AI-powered writing assistant for academic writing questions
-- **Responsive Design**: Works on desktop and mobile devices
-- **APA Style Guide**: Built-in guidance for APA referencing
-
-## API Endpoints
-
-- `GET /api/chat`: Health check for chat service
-- `POST /api/chat`: Send message to writing assistant
-
-## Adding a Backend Service
-
-When you're ready to add a backend service:
-
-1. **Create a backend directory:**
-   ```bash
-   mkdir backend
-   ```
-
-2. **Uncomment the backend service in docker-compose.yml**
-
-3. **Update the frontend to connect to the backend API**
-
-## Troubleshooting
-
-### Port Already in Use
-If port 3000 is already in use, modify the port mapping in docker-compose.yml:
-```yaml
-ports:
-  - "3001:3000"  # Change 3001 to any available port
-```
-
-### Build Issues
-Clear Docker cache and rebuild:
+### System Health Dashboard
 ```bash
-docker-compose down
-docker system prune -f
-docker-compose up --build
+curl http://localhost:8004/system-health
 ```
 
-### Development Hot Reload Not Working
-Ensure you're using the development compose file:
+### Hybrid Search API
+
+**New Feature**: Hybrid search endpoint combining dense embeddings and sparse BM25 vectors for improved search accuracy.
+
+**Flow**: Text Query → Embedding Service → BM25 Encoding → Qdrant Hybrid Search → Results
+
 ```bash
-docker-compose -f docker-compose.dev.yml up --build
+# Test hybrid search endpoint
+curl -X POST http://localhost:8002/hybrid-search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query_text": "your search query",
+    "limit": 5,
+    "score_threshold": 0.5,
+    "user_id": "optional_user_id"
+  }'
 ```
 
-## Contributing
+**Response Format**:
+```json
+{
+  "results": [
+    {
+      "id": "document_id",
+      "score": 0.574,
+      "payload": {
+        "text": "document content...",
+        "user_id": "user_id",
+        "title": "document title",
+        "source": "source_file"
+      }
+    }
+  ],
+  "total_found": 2,
+  "search_type": "dense_only|hybrid|sparse_only"
+}
+```
 
-1. Make changes to the frontend code in the `frontend/` directory
-2. Test locally using development mode
-3. Build and test production image before deploying
+**Features**:
+- Automatic fallback to dense-only search if BM25 not available
+- Error handling for embedding service downtime
+- User-specific filtering support
+- Configurable score thresholds and result limits
 
-## License
+### Service Logs
+```bash
+docker-compose logs -f ai-core
+docker-compose logs -f mcp-server
+docker-compose logs -f database
+docker-compose logs -f websocket
+docker-compose logs -f monitor
+docker-compose logs -f frontend
+```
 
-This project is for educational purposes as part of the University of Tasmania's UPP014 module.
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **WebSocket Connection Failed**
+   - Check if websocket service is running: `docker-compose ps`
+   - Verify port 8003 is accessible
+
+2. **Qdrant Connection Error**
+   - Verify QDRANT_URL and QDRANT_CLOUD_API_KEY in .env
+   - Check database service logs: `docker-compose logs database`
+
+3. **Gemini API Error**
+   - Verify GOOGLE_API_KEY in .env
+   - Check AI Core service logs: `docker-compose logs ai-core`
+
+### Restart Services
+```bash
+docker-compose restart [service-name]
+# or restart all
+docker-compose down && docker-compose up -d
+```
+
+## 📝 Development Notes
+
+- **No Helper Functions**: Clean, direct implementation
+- **Fixed Dependencies**: Locked versions for stability
+- **Microservice Communication**: HTTP/WebSocket between services
+- **Error Handling**: Comprehensive logging and monitoring
+- **Scalable Design**: Easy to add new services

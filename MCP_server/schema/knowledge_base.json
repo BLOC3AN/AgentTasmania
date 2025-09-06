@@ -1,0 +1,19 @@
+{
+  "name": "knowledges_base",
+  "description": "Search and retrieve information from the knowledge base using hybrid search. Use this tool when users ask for information, facts, or need to search for specific content. Always use this tool for knowledge-related queries.",
+  "args_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "The user's question or search query. Pass the exact question or keywords you want to search for in the knowledge base."
+      }
+    },
+    "required": ["query"]
+  },
+  "endpoint": {
+    "method": "POST",
+    "url": "/tools/knowledges_base"
+  },
+  "score": 20
+}

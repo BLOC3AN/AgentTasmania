@@ -1,0 +1,35 @@
+# Development Dockerfile for hot reloading
+FROM node:18-alpine
+
+# Install necessary packages for development
+RUN apk add --no-cache libc6-compat wget
+
+WORKDIR /app
+
+# Install dependencies first (for better caching)
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy configuration files
+COPY next.config.ts tsconfig.json ./
+COPY postcss.config.mjs eslint.config.mjs ./
+
+# Copy source code (this will be mounted as volume in development)
+COPY . .
+
+# Create next.js cache directory and set permissions
+RUN mkdir -p .next && chown -R node:node .next
+RUN chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
+# Expose port
+EXPOSE 3000
+
+# Set environment variables
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Start development server with hot reload
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
