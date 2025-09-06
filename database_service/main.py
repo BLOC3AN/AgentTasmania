@@ -199,7 +199,9 @@ async def hybrid_search(request: HybridSearchRequest):
             qdrant_config=qdrant_config,
             limit=request.limit,
             score_threshold=request.score_threshold,
-            user_id=request.user_id
+            subject=getattr(request, 'subject', None),
+            title=getattr(request, 'title', None),
+            week=getattr(request, 'week', None)
         )
 
         return HybridSearchResponse(

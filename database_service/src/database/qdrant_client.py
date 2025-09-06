@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List, Union
 from dataclasses import dataclass
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
-from qdrant_client.models import Distance, VectorParams, SparseVectorParams, Modifier
+from qdrant_client.models import Distance, VectorParams, SparseVectorParams, Modifier, FieldCondition, MatchValue
 from src.utils.logger import Logger
 
 # Load environment variables
@@ -23,15 +23,14 @@ logger = Logger(__name__)
 class VectorDocument:
     """Vector document model for Qdrant storage."""
     id: Union[str, int]
-    text: str
-    user_id: str
-    title: Optional[str] = None
-    source: Optional[str] = None
-    file_id: Optional[str] = None
-    page: Optional[int] = None
-    timestamp: Optional[str] = None
+    content: str  # The content of chunk in source
+    subject: str  # The subject like math, physic, etc
+    title: str    # The title of file or session like season1
+    week: str     # The number of week like week1, week2, week3, etc
+    chunk_id: str # The id of chunk content in source
+    timestamp: Optional[str] = None  # The time create
     vector_size: int = 512
-    
+
     def __post_init__(self):
         """Post-initialization to set default values."""
         if self.vector_size is None:
@@ -39,30 +38,28 @@ class VectorDocument:
 
         if self.timestamp is None:
             self.timestamp = datetime.now(timezone.utc).isoformat()
-    
+
     def to_payload(self) -> Dict[str, Any]:
         """Convert to Qdrant payload format."""
         return {
-            "text": self.text,
-            "user_id": self.user_id,
+            "content": self.content,
+            "subject": self.subject,
             "title": self.title,
-            "file_id": self.file_id,
-            "source": self.source,
-            "page": self.page,
+            "week": self.week,
+            "chunk_id": self.chunk_id,
             "timestamp": self.timestamp
         }
-    
+
     @classmethod
     def from_payload(cls, doc_id: Union[str, int], payload: Dict[str, Any]) -> 'VectorDocument':
         """Create VectorDocument from Qdrant payload."""
         return cls(
             id=doc_id,
-            text=payload.get("text", ""),
-            user_id=payload.get("user_id", ""),
-            title=payload.get("title"),
-            source=payload.get("source"),
-            file_id=payload.get("file_id"),
-            page=payload.get("page"),
+            content=payload.get("content", ""),
+            subject=payload.get("subject", ""),
+            title=payload.get("title", ""),
+            week=payload.get("week", ""),
+            chunk_id=payload.get("chunk_id", ""),
             timestamp=payload.get("timestamp")
         )
 
@@ -150,10 +147,10 @@ class QdrantConfig:
     def _create_payload_indexes(self):
         """Create payload indexes for efficient filtering."""
         try:
-            # Create index for user_id field
+            # Create index for subject field
             self.client.create_payload_index(
                 collection_name=self.collection_name,
-                field_name="user_id",
+                field_name="subject",
                 field_schema=models.PayloadSchemaType.KEYWORD
             )
             # Create index for title field
@@ -162,17 +159,16 @@ class QdrantConfig:
                 field_name="title",
                 field_schema=models.PayloadSchemaType.KEYWORD
             )
-            # Create index for source field
+            # Create index for week field
             self.client.create_payload_index(
                 collection_name=self.collection_name,
-                field_name="source",
+                field_name="week",
                 field_schema=models.PayloadSchemaType.KEYWORD
             )
-
-            # Create index for file_id field
+            # Create index for chunk_id field
             self.client.create_payload_index(
                 collection_name=self.collection_name,
-                field_name="file_id",
+                field_name="chunk_id",
                 field_schema=models.PayloadSchemaType.KEYWORD
             )
 
@@ -227,11 +223,11 @@ class QdrantConfig:
             logger.error(f"Failed to upsert document: {e}")
             return False
     
-    def search_similar(self, 
+    def search_similar(self,
                       query_vector: List[float],
                       limit: int = 10,
                       score_threshold: float = 0.7,
-                      filter_conditions: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+                      filter_conditions: Optional[models.Filter] = None) -> List[Dict[str, Any]]:
         """
         Search for similar documents using dense vector.
         
@@ -250,7 +246,7 @@ class QdrantConfig:
                 query_vector=("dense_vector", query_vector),
                 limit=limit,
                 score_threshold=score_threshold,
-                query_filter=models.Filter(**filter_conditions) if filter_conditions else None,
+                query_filter=filter_conditions,
                 with_payload=True,
                 with_vectors=False
             )
@@ -342,73 +338,54 @@ class QdrantConfig:
             logger.error(f"Failed to get collection info: {e}")
             return None
 
-    def check_file_exists(self, user_id: str, file_id: str = None, title: str = None, source: str = None) -> Optional[VectorDocument]:
+    def check_file_exists(self, subject: str, title: str, week: str = None, chunk_id: str = None) -> Optional[VectorDocument]:
         """
-        Check if a file has already been embedded for a user.
-        Supports both regular files and chunked files.
+        Check if a file has already been embedded.
 
         Args:
-            user_id: User ID
-            file_id: Unique file identifier (preferred)
-            title: File title (fallback)
-            source: Optional source/file_key for more specific matching
+            subject: Subject like math, physic, etc
+            title: Title of file or session
+            week: Optional week number
+            chunk_id: Optional chunk ID
 
         Returns:
             VectorDocument if exists, None otherwise
         """
         try:
-            # Prefer file_id if provided, otherwise use title
-            identifier = file_id if file_id else title
-            if not identifier:
-                logger.error("Either file_id or title must be provided")
-                return None
-
-            # First try exact match
-            exact_result = self._check_file_exact_match(user_id, identifier, source, use_file_id=bool(file_id))
-            if exact_result:
-                return exact_result
-
-            # If no exact match, try chunked file match (for PDF files)
-            chunked_result = self._check_chunked_file_exists(user_id, identifier, source)
-            if chunked_result:
-                return chunked_result
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error checking file existence: {e}")
-            return None
-
-    def _check_file_exact_match(self, user_id: str, identifier: str, source: str = None, use_file_id: bool = True) -> Optional[VectorDocument]:
-        """Check for exact file match using file_id or title field."""
-        try:
-            # Build filter conditions for exact match
-            field_name = "file_id" if use_file_id else "title"
+            # Build filter conditions using proper Qdrant models
             must_conditions = [
-                {
-                    "key": "user_id",
-                    "match": {"value": user_id}
-                },
-                {
-                    "key": field_name,
-                    "match": {"value": identifier}
-                }
+                models.FieldCondition(
+                    key="subject",
+                    match=models.MatchValue(value=subject)
+                ),
+                models.FieldCondition(
+                    key="title",
+                    match=models.MatchValue(value=title)
+                )
             ]
 
-            if source:
-                must_conditions.append({
-                    "key": "source",
-                    "match": {"value": source}
-                })
+            if week:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="week",
+                        match=models.MatchValue(value=week)
+                    )
+                )
 
-            filter_conditions = {
-                "must": must_conditions
-            }
+            if chunk_id:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="chunk_id",
+                        match=models.MatchValue(value=chunk_id)
+                    )
+                )
+
+            filter_conditions = models.Filter(must=must_conditions)
 
             # Use scroll to find points with filter
             results, _ = self.client.scroll(
                 collection_name=self.collection_name,
-                scroll_filter=models.Filter(**filter_conditions),
+                scroll_filter=filter_conditions,
                 limit=1,
                 with_payload=True,
                 with_vectors=False
@@ -416,276 +393,160 @@ class QdrantConfig:
 
             if results:
                 point = results[0]
-                return VectorDocument.from_payload(point.id, point.payload)
+                return VectorDocument.from_payload(point.id, point.payload or {})
 
             return None
 
         except Exception as e:
-            logger.error(f"Error in exact match check: {e}")
+            logger.error(f"Error checking file existence: {e}")
             return None
 
-    def _check_chunked_file_exists(self, user_id: str, identifier: str, source: str = None) -> Optional[VectorDocument]:
-        """Check for chunked file existence (for PDF files)."""
-        try:
-            # Method 1: Check using title field for chunked files
-            try:
-                must_conditions = [
-                    {
-                        "key": "user_id",
-                        "match": {"value": user_id}
-                    },
-                    {
-                        "key": "title",
-                        "match": {"value": identifier}
-                    }
-                ]
 
-                filter_conditions = {"must": must_conditions}
 
-                results, _ = self.client.scroll(
-                    collection_name=self.collection_name,
-                    scroll_filter=models.Filter(**filter_conditions),
-                    limit=1,
-                    with_payload=True,
-                    with_vectors=False
-                )
 
-                if results:
-                    point = results[0]
-                    return VectorDocument.from_payload(point.id, point.payload)
 
-            except Exception as e:
-                logger.warning(f"Method 1 (title) failed: {e}")
-
-            # Method 2: Check for chunks using source field pattern
-            try:
-                must_conditions = [
-                    {
-                        "key": "user_id",
-                        "match": {"value": user_id}
-                    },
-                    {
-                        "key": "source",
-                        "match": {"value": f"{identifier}#chunk"}
-                    }
-                ]
-
-                filter_conditions = {"must": must_conditions}
-
-                results, _ = self.client.scroll(
-                    collection_name=self.collection_name,
-                    scroll_filter=models.Filter(**filter_conditions),
-                    limit=1,
-                    with_payload=True,
-                    with_vectors=False
-                )
-
-                if results:
-                    point = results[0]
-                    return VectorDocument.from_payload(point.id, point.payload)
-
-            except Exception as e:
-                logger.warning(f"Method 2 (source pattern) failed: {e}")
-
-            # Method 3: Check for source patterns like "filename#chunk_X"
-            if source:
-                try:
-                    must_conditions = [
-                        {
-                            "key": "user_id",
-                            "match": {"value": user_id}
-                        }
-                    ]
-
-                    # Get all documents for this user and check source patterns manually
-                    results, _ = self.client.scroll(
-                        collection_name=self.collection_name,
-                        scroll_filter=models.Filter(must=must_conditions),
-                        limit=100,  # Get more results to check patterns
-                        with_payload=True,
-                        with_vectors=False
-                    )
-
-                    # Check each result for matching patterns
-                    for point in results:
-                        payload = point.payload
-                        point_source = payload.get("source", "")
-                        point_title = payload.get("title", "")
-
-                        # Check if source starts with our file source and has chunk pattern
-                        if point_source.startswith(f"{source}#chunk_"):
-                            return VectorDocument.from_payload(point.id, point.payload)
-
-                        # Check if title starts with our identifier and has part pattern
-                        if point_title.startswith(f"{identifier} (Part"):
-                            return VectorDocument.from_payload(point.id, point.payload)
-
-                except Exception as e:
-                    logger.warning(f"Method 3 (source pattern) failed: {e}")
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Error in chunked file check: {e}")
-            return None
-
-    def delete_user_file_vectors(self, user_id: str, file_id: str = None, title: str = None, source: str = None) -> bool:
+    def delete_vectors_by_filter(self, subject: str = None, title: str = None, week: str = None, chunk_id: str = None) -> bool:
         """
-        Delete all vectors for a specific user file using file_id or title field.
+        Delete vectors by filter conditions.
 
         Args:
-            user_id: User ID
-            file_id: Unique file identifier (preferred)
-            title: File title (fallback)
-            source: Optional source for more specific matching
+            subject: Subject filter
+            title: Title filter
+            week: Week filter
+            chunk_id: Chunk ID filter
 
         Returns:
             bool: Success status
         """
         try:
-            # Prefer file_id if provided, otherwise use title
-            identifier = file_id if file_id else title
-            if not identifier:
-                logger.error("Either file_id or title must be provided")
+            if not any([subject, title, week, chunk_id]):
+                logger.error("At least one filter condition must be provided")
                 return False
 
-            deleted_count = 0
+            # Build filter conditions
+            must_conditions = []
 
-            # Method 1: Delete using file_id or title field
-            try:
-                field_name = "file_id" if file_id else "title"
-                must_conditions = [
-                    {
-                        "key": "user_id",
-                        "match": {"value": user_id}
-                    },
-                    {
-                        "key": field_name,
-                        "match": {"value": identifier}
-                    }
-                ]
-
-                if source:
-                    must_conditions.append({
-                        "key": "source",
-                        "match": {"value": source}
-                    })
-
-                filter_conditions = {"must": must_conditions}
-
-                # Count before deletion for logging
-                count_result, _ = self.client.scroll(
-                    collection_name=self.collection_name,
-                    scroll_filter=models.Filter(**filter_conditions),
-                    limit=1,
-                    with_payload=False,
-                    with_vectors=False
+            if subject:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="subject",
+                        match=models.MatchValue(value=subject)
+                    )
                 )
 
-                if count_result:
-                    # Delete points with filter
-                    self.client.delete(
-                        collection_name=self.collection_name,
-                        points_selector=models.FilterSelector(
-                            filter=models.Filter(**filter_conditions)
-                        )
+            if title:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="title",
+                        match=models.MatchValue(value=title)
                     )
-                    deleted_count += len(count_result)
-                    logger.info(f"Deleted {len(count_result)} vectors using {field_name} field")
-
-            except Exception as e:
-                logger.warning(f"Method 1 ({field_name}) failed: {e}")
-
-            # Method 2: Delete chunked files using source pattern
-            try:
-                must_conditions = [
-                    {
-                        "key": "user_id",
-                        "match": {"value": user_id}
-                    },
-                    {
-                        "key": "source",
-                        "match": {"value": f"{identifier}#chunk"}
-                    }
-                ]
-
-                if source:
-                    must_conditions.append({
-                        "key": "source",
-                        "match": {"value": source}
-                    })
-
-                filter_conditions = {"must": must_conditions}
-
-                # Count before deletion for logging
-                count_result, _ = self.client.scroll(
-                    collection_name=self.collection_name,
-                    scroll_filter=models.Filter(**filter_conditions),
-                    limit=1,
-                    with_payload=False,
-                    with_vectors=False
                 )
 
-                if count_result:
-                    # Delete points with filter
-                    self.client.delete(
-                        collection_name=self.collection_name,
-                        points_selector=models.FilterSelector(
-                            filter=models.Filter(**filter_conditions)
-                        )
+            if week:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="week",
+                        match=models.MatchValue(value=week)
                     )
-                    deleted_count += len(count_result)
-                    logger.info(f"Deleted {len(count_result)} vectors using source pattern")
+                )
 
-            except Exception as e:
-                logger.warning(f"Method 2 (source pattern) failed: {e}")
+            if chunk_id:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="chunk_id",
+                        match=models.MatchValue(value=chunk_id)
+                    )
+                )
 
-            logger.info(f"Total deleted vectors for user {user_id}, identifier: {identifier} = {deleted_count}")
-            return deleted_count > 0
+            filter_conditions = models.Filter(must=must_conditions)
+
+            # Count before deletion for logging
+            count_result, _ = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=filter_conditions,
+                limit=100,
+                with_payload=False,
+                with_vectors=False
+            )
+
+            if count_result:
+                # Delete points with filter
+                self.client.delete(
+                    collection_name=self.collection_name,
+                    points_selector=models.FilterSelector(filter=filter_conditions)
+                )
+                logger.info(f"Deleted {len(count_result)} vectors")
+                return True
+            else:
+                logger.info("No vectors found matching the filter conditions")
+                return False
 
         except Exception as e:
-            logger.error(f"Failed to delete file vectors: {e}")
+            logger.error(f"Failed to delete vectors: {e}")
             return False
 
-    def get_user_files(self, user_id: str, limit: int = 100) -> List[VectorDocument]:
+    def get_documents_by_filter(self, subject: str = None, title: str = None, week: str = None, limit: int = 100) -> List[VectorDocument]:
         """
-        Get all files for a specific user.
+        Get documents by filter conditions.
 
         Args:
-            user_id: User ID
-            limit: Maximum number of files to return
+            subject: Subject filter
+            title: Title filter
+            week: Week filter
+            limit: Maximum number of documents to return
 
         Returns:
-            List of VectorDocument for the user
+            List of VectorDocument matching the filters
         """
         try:
-            filter_conditions = {
-                "must": [
-                    {
-                        "key": "user_id",
-                        "match": {"value": user_id}
-                    }
-                ]
-            }
+            # Build filter conditions
+            must_conditions = []
 
-            # Use scroll to get all user files
+            if subject:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="subject",
+                        match=models.MatchValue(value=subject)
+                    )
+                )
+
+            if title:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="title",
+                        match=models.MatchValue(value=title)
+                    )
+                )
+
+            if week:
+                must_conditions.append(
+                    models.FieldCondition(
+                        key="week",
+                        match=models.MatchValue(value=week)
+                    )
+                )
+
+            # If no filters provided, get all documents
+            filter_conditions = models.Filter(must=must_conditions) if must_conditions else None
+
+            # Use scroll to get documents
             results, _ = self.client.scroll(
                 collection_name=self.collection_name,
-                scroll_filter=models.Filter(**filter_conditions),
+                scroll_filter=filter_conditions,
                 limit=limit,
                 with_payload=True,
                 with_vectors=False
             )
 
-            user_files = []
+            documents = []
             for point in results:
-                doc = VectorDocument.from_payload(point.id, point.payload)
-                user_files.append(doc)
+                doc = VectorDocument.from_payload(point.id, point.payload or {})
+                documents.append(doc)
 
-            return user_files
+            return documents
 
         except Exception as e:
-            logger.error(f"Failed to get user files: {e}")
+            logger.error(f"Failed to get documents: {e}")
             return []
 
 
@@ -718,22 +579,20 @@ def generate_document_id() -> str:
     return str(uuid.uuid4())
 
 
-def create_vector_document(text: str,
-                          user_id: str,
-                          title: str = None,
-                          source: str = None,
-                          file_id: str = None,
-                          page: int = None) -> VectorDocument:
+def create_vector_document(content: str,
+                          subject: str,
+                          title: str,
+                          week: str,
+                          chunk_id: str) -> VectorDocument:
     """
     Create a VectorDocument with proper structure.
 
     Args:
-        text: Main text content
-        user_id: User ID for file isolation
-        title: Document title
-        source: Source file or origin
-        file_id: Unique file identifier
-        page: Page number if applicable
+        content: The content of chunk in source
+        subject: The subject like math, physic, etc
+        title: The title of file or session like season1
+        week: The number of week like week1, week2, week3, etc
+        chunk_id: The id of chunk content in source
 
     Returns:
         VectorDocument instance
@@ -742,10 +601,9 @@ def create_vector_document(text: str,
 
     return VectorDocument(
         id=doc_id,
-        text=text,
-        user_id=user_id,
+        content=content,
+        subject=subject,
         title=title,
-        source=source,
-        file_id=file_id,
-        page=page
+        week=week,
+        chunk_id=chunk_id
     )

@@ -193,8 +193,8 @@ services:
       - 6333 # For REST API
       - 6334 # For gRPC
       - 6335 # For internal communication
-    volumes:
-      - ../data/qdrant:/qdrant/storage
+    # volumes:
+    #   - ../data/qdrant:/qdrant/storage
     networks:
       - agent-network
 

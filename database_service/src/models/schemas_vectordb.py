@@ -39,7 +39,9 @@ class HybridSearchRequest(BaseModel):
     dense_weight: Optional[float] = 0.7
     sparse_weight: Optional[float] = 0.3
     score_threshold: Optional[float] = 0.5
-    user_id: Optional[str] = None
+    subject: Optional[str] = None
+    title: Optional[str] = None
+    week: Optional[str] = None
 
 class HybridSearchResponse(BaseModel):
     results: List[Dict[str, Any]]

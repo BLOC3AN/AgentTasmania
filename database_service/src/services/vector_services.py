@@ -44,8 +44,8 @@ class VectorServices:
 
             documents = []
             for point in scroll_result[0]:  # scroll returns (points, next_page_offset)
-                if 'text' in point.payload:
-                    documents.append(point.payload['text'])
+                if 'content' in point.payload:  # Changed from 'text' to 'content'
+                    documents.append(point.payload['content'])
 
             return documents
         except Exception as e:
@@ -88,7 +88,9 @@ class VectorServices:
                      qdrant_config,
                      limit: int = 5,
                      score_threshold: float = 0.5,
-                     user_id: Optional[str] = None) -> Dict[str, Any]:
+                     subject: Optional[str] = None,
+                     title: Optional[str] = None,
+                     week: Optional[str] = None) -> Dict[str, Any]:
         """Perform true hybrid search using Qdrant's native RRF."""
         try:
             # Initialize BM25 corpus if not done yet
@@ -107,11 +109,11 @@ class VectorServices:
             if sparse_vector and self._corpus_initialized:
                 return self._qdrant_hybrid_search(
                     dense_vector, sparse_vector, qdrant_config,
-                    limit, score_threshold, user_id
+                    limit, score_threshold, subject, title, week
                 )
             else:
                 logger.warning("BM25 not ready, falling back to dense search")
-                return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, user_id)
+                return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, subject, title, week)
 
         except Exception as e:
             logger.error(f"Hybrid search failed: {e}")
@@ -123,22 +125,43 @@ class VectorServices:
                              qdrant_config,
                              limit: int,
                              score_threshold: float,
-                             user_id: Optional[str]) -> Dict[str, Any]:
+                             subject: Optional[str] = None,
+                             title: Optional[str] = None,
+                             week: Optional[str] = None) -> Dict[str, Any]:
         """Perform hybrid search using Qdrant's native RRF."""
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue, Prefetch, FusionQuery, Fusion
 
             # Build filter conditions
             filter_conditions = None
-            if user_id:
-                filter_conditions = Filter(
-                    must=[
-                        FieldCondition(
-                            key="user_id",
-                            match=MatchValue(value=user_id)
-                        )
-                    ]
+            must_conditions = []
+
+            if subject:
+                must_conditions.append(
+                    FieldCondition(
+                        key="subject",
+                        match=MatchValue(value=subject)
+                    )
                 )
+
+            if title:
+                must_conditions.append(
+                    FieldCondition(
+                        key="title",
+                        match=MatchValue(value=title)
+                    )
+                )
+
+            if week:
+                must_conditions.append(
+                    FieldCondition(
+                        key="week",
+                        match=MatchValue(value=week)
+                    )
+                )
+
+            if must_conditions:
+                filter_conditions = Filter(must=must_conditions)
 
             # Convert sparse vector to Qdrant format
             sparse_indices = list(sparse_vector.keys())
@@ -188,32 +211,54 @@ class VectorServices:
         except Exception as e:
             logger.error(f"Qdrant hybrid search failed: {e}")
             # Fallback to dense search
-            return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, user_id)
+            return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, subject, title, week)
 
     def _dense_only_search(self,
                           dense_vector: List[float],
                           qdrant_config,
                           limit: int,
                           score_threshold: float,
-                          user_id: Optional[str]) -> Dict[str, Any]:
+                          subject: Optional[str] = None,
+                          title: Optional[str] = None,
+                          week: Optional[str] = None) -> Dict[str, Any]:
         """Fallback to dense search only."""
         try:
-            filter_conditions = {}
-            if user_id:
-                filter_conditions = {
-                    "must": [
-                        {
-                            "key": "user_id",
-                            "match": {"value": user_id}
-                        }
-                    ]
-                }
+            filter_conditions = None
+            if any([subject, title, week]):
+                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                must_conditions = []
+
+                if subject:
+                    must_conditions.append(
+                        FieldCondition(
+                            key="subject",
+                            match=MatchValue(value=subject)
+                        )
+                    )
+
+                if title:
+                    must_conditions.append(
+                        FieldCondition(
+                            key="title",
+                            match=MatchValue(value=title)
+                        )
+                    )
+
+                if week:
+                    must_conditions.append(
+                        FieldCondition(
+                            key="week",
+                            match=MatchValue(value=week)
+                        )
+                    )
+
+                filter_conditions = Filter(must=must_conditions)
 
             results = qdrant_config.search_similar(
                 query_vector=dense_vector,
                 limit=limit,
                 score_threshold=score_threshold,
-                filter_conditions=filter_conditions if user_id else None
+                filter_conditions=filter_conditions
             )
 
             formatted_results = []
