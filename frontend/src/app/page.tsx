@@ -1,14 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import ChatBox from '@/components/ChatBox';
 
 export default function Home() {
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  useEffect(() => {
-    setIsLoaded(true);
-  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -63,7 +57,7 @@ export default function Home() {
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-6 mb-8">
               <h3 className="text-lg font-semibold text-yellow-900 mb-3">Links to Assessment:</h3>
               <p className="text-yellow-800 mb-3">
-                This module's content, readings, and discussion directly supports <strong>Assessment Task 2 (AT2): Writing Journal</strong>.
+                This module&apos;s content, readings, and discussion directly supports <strong>Assessment Task 2 (AT2): Writing Journal</strong>.
                 The Writing Journal will consist of 3 paragraphs of writing.
               </p>
               <p className="text-yellow-800 mb-2">You will be assessed on the following criteria:</p>
@@ -114,10 +108,10 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Integrating sources into writing</h2>
             <div className="prose prose-lg text-gray-700 space-y-4 mb-6">
               <p>
-                Integrating a source is using another author's writing to establish or support your argument.
-                Introducing another author's work can provide an authoritative voice, introduce a supportive or
+                Integrating a source is using another author&apos;s writing to establish or support your argument.
+                Introducing another author&apos;s work can provide an authoritative voice, introduce a supportive or
                 contrasting position, provide evidence for your own position or make a distinction between different
-                authors' views (University of New South Wales, 2019).
+                authors&apos; views (University of New South Wales, 2019).
               </p>
               <p className="font-semibold">There are four methods to integrate sources into your writing:</p>
             </div>
@@ -136,7 +130,7 @@ export default function Home() {
                   <p className="text-red-800 text-sm">
                     <strong>Remember:</strong> Always include page numbers when citing a quotation and enclose
                     the quote in double quotation marks. Be sure to introduce the quote, quote it (with citation),
-                    and then explain it afterward. We call this "sandwiching."
+                    and then explain it afterward. We call this &quot;sandwiching.&quot;
                   </p>
                 </div>
               </div>
@@ -145,7 +139,7 @@ export default function Home() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
                 <h3 className="text-xl font-bold text-blue-900 mb-3">Paraphrase</h3>
                 <p className="text-blue-800 mb-4">
-                  This is when you convert a passage of another author's work into your own words (Morley-Warner, 2009).
+                  This is when you convert a passage of another author&apos;s work into your own words (Morley-Warner, 2009).
                   It involves rephrasing the passage of text but not shortening it.
                 </p>
                 <div className="bg-blue-100 p-4 rounded border-l-4 border-blue-400">
@@ -159,7 +153,7 @@ export default function Home() {
               <div className="bg-green-50 border border-green-200 rounded-lg p-6">
                 <h3 className="text-xl font-bold text-green-900 mb-3">Summarise</h3>
                 <p className="text-green-800 mb-4">
-                  This is when you filter a passage of another author's work into the essential points
+                  This is when you filter a passage of another author&apos;s work into the essential points
                   (Morley-Warner, 2009). This is useful when you have several sources to include, or the
                   concept is large and needs drilling down to main points.
                 </p>

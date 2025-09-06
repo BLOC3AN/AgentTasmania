@@ -13,7 +13,7 @@ export default function ChatBox() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
-  const [isConnected, setIsConnected] = useState(true); // Always connected for REST API
+  const [isConnected] = useState(true); // Always connected for REST API
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -30,7 +30,7 @@ export default function ChatBox() {
       // Add welcome message when chat opens
       const welcomeMessage: Message = {
         id: 'welcome',
-        text: 'Hello! I\'m here to help you with your academic writing. Feel free to ask me questions about source integration, APA referencing, or any other writing-related topics.',
+        text: 'Hello! I&apos;m here to help you with your academic writing. Feel free to ask me questions about source integration, APA referencing, or any other writing-related topics.',
         sender: 'agent',
         timestamp: new Date(),
       };
@@ -80,7 +80,7 @@ export default function ChatBox() {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Sorry, I\'m having trouble responding right now. Please try again later.',
+        text: 'Sorry, I&apos;m having trouble responding right now. Please try again later.',
         sender: 'agent',
         timestamp: new Date(),
       };
@@ -163,7 +163,7 @@ export default function ChatBox() {
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
                 placeholder="Ask about academic writing..."
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
