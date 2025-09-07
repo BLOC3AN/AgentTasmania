@@ -3,7 +3,6 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from datetime import datetime, timezone, timedelta
 from src.llms.gemini import LLMGemini
 from src.utils.logger import Logger
 import yaml
@@ -23,62 +22,7 @@ def load_short_term_memory(session_id: str):
         logger.error(f"❌ Error loading short term memory: {e}")
         return ""
 
-def load_language_instructions(language: str) -> str:
-    """Load language instructions from system"""
-    language_instructions = {
-        "VietNam": {
-            "system": """
-    === RESPONSE LANGUAGE ===
-    IMPORTANT: You MUST respond strictly in Vietnamese. All your answers must be written entirely in Vietnamese with no mixing of other languages.
-    Do not use English or any other language in your response, even partially.
-    """,
-            "format": ", response language:Check gramma and response full Vietnamese language only"
-        },
-        "ThaiLan": {
-            "system": """
-    === RESPONSE LANGUAGE ===
-    IMPORTANT: You MUST respond strictly in Thai. All your answers must be written entirely in Thai with no mixing of other languages.
-    Do not use English or any other language in your response, even partially.
-    """,
-            "format": ", response language:Check gramma and response full Thai language only"
-        },
-        "English": {
-            "system": """
-    === RESPONSE LANGUAGE ===
-    IMPORTANT: You MUST respond strictly in English. All your answers must be written entirely in English with no mixing of other languages.
-    Do not use Vietnamese, Thai, or any other language in your response, even partially.
-    """,
-            "format": ", response language:Check gramma and response full English language only"
-        },
-        # Support for detected_language codes from speech-to-text
-        "en": {
-            "system": """
-    === RESPONSE LANGUAGE ===
-    IMPORTANT: You MUST respond strictly in English. All your answers must be written entirely in English with no mixing of other languages.
-    Do not use Vietnamese, Thai, or any other language in your response, even partially.
-    """,
-            "format": ", response language:Check gramma and response full English language only"
-        },
-        "vi": {
-            "system": """
-    === RESPONSE LANGUAGE ===
-    IMPORTANT: You MUST respond strictly in Vietnamese. All your answers must be written entirely in Vietnamese with no mixing of other languages.
-    Do not use English or any other language in your response, even partially.
-    """,
-            "format": ", response language:Check gramma and response full Vietnamese language only"
-        },
-        "th": {
-            "system": """
-    === RESPONSE LANGUAGE ===
-    IMPORTANT: You MUST respond strictly in Thai. All your answers must be written entirely in Thai with no mixing of other languages.
-    Do not use English or any other language in your response, even partially.
-    """,
-            "format": ", response language:Check gramma and response full Thai language  language only"
-        }
-    }
-    
-    lang_config = language_instructions.get(language, language_instructions["VietNam"])
-    return lang_config
+
 
 def load_prompt(yaml_file_path: str) -> str:
     """
@@ -190,19 +134,12 @@ User's question: {enhanced_query}
 def build_context_v1(
     yaml_path: str,
     query: str = None,
-    language: str = "VietNam",
     session_id: str = "default",
     user_id: str = None
     ):
     """Create a tasker-specific prompt template for V1 with static tools section"""
-    # Get current time for context
-    vietnam_tz = timezone(timedelta(hours=7))
-    now_vn = datetime.now(vietnam_tz)
-    current_time = now_vn.strftime("Today is %A, %Y-%m-%dT%H:%M:%S%z")
-
-    lang_config = load_language_instructions(language)
     short_term_memory = load_short_term_memory(session_id)
-    tasker_system_prompt = load_prompt(yaml_path)
+    system_prompt = load_prompt(yaml_path)
 
     # RAG Context: query → RAG → enhance context → prompt → agent
     rag_context_result = ""
@@ -227,29 +164,17 @@ def build_context_v1(
         memory_context = "\n".join(memory_parts) if memory_parts else ""
 
     # Combine all system instructions into one message to avoid multiple SystemMessages
-    combined_system_prompt = f"""System Instructions: {tasker_system_prompt}\n {lang_config['system']}"""
-
     # Build prompt messages - only include memory context if it exists
     messages = [
-        ("system", combined_system_prompt),
-        ("human", f"\n---\nCurrent time: {current_time}\n---\n"),
+        ("system",system_prompt),
         MessagesPlaceholder(variable_name="chat_history"),
+        ("human", rag_context_result),
+        ("human", "The user's query: **{input}**"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
     ]
-    
-    if rag_context_result and rag_context_result.strip() and rag_context_result != query:
-        messages.append(("assistant", f"Knowledge Base Context:\n{rag_context_result}"))
-        logger.info(f"📚 [Context Builder] RAG context added to prompt ({len(rag_context_result)} chars)")
-
     # Add memory context only if it exists
     if memory_context:
         messages.append(("assistant", f"Previous conversation context:\n{memory_context}"))
-
-    # Add RAG context if available - as human message to avoid SystemMessage position issues
-
-    messages.extend([
-        ("human", "User Query: {input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
 
     prompt = ChatPromptTemplate.from_messages(messages)
 

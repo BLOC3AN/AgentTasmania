@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
         user_id: "frontend_user",
         channel_id: "frontend",
         llm_model: "gemini-2.0-flash",
-        language: "VietNam",
         token: ""
       }),
       // Add timeout to prevent hanging requests

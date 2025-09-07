@@ -15,15 +15,14 @@ async def worker_execute_v1(
     user_id: str = "",
     channel_id: str = "",
     llm_model: str = "",
-    language: str = "VietNam",
     token: str = ""
     ):
     """Version 1.0 worker execution logic - simplified without intent classification"""
     try:
         logger.info(f"📝 [V1] Query: {query}")
-        logger.info(f"👤 [V1] User: {user_id},\nChannel: {channel_id},\nLanguage: {language}")
+        logger.info(f"👤 [V1] User: {user_id},\nChannel: {channel_id}")
 
-        _ensure_session_exists(session_id, user_id, channel_id, language)
+        _ensure_session_exists(session_id, user_id, channel_id)
         session_manager.set_agent_state(session_id, AgentState.CONVERSATION)
         current_agent = session_manager.get_current_agent(session_id)
         result = await _execute_tasker_agent(query, session_id, user_id, llm_model, token)
@@ -34,17 +33,11 @@ async def worker_execute_v1(
         logger.error(f"❌ [V1] Session {session_id}: Error in worker execution: {str(e)}")
         return _create_error_response(str(e))
 
-def _ensure_session_exists(session_id: str, user_id: str, channel_id: str, language: str = "VietNam"):
+def _ensure_session_exists(session_id: str, user_id: str, channel_id: str):
     """Ensure session exists, create if not"""
     session = session_manager.get_session(session_id)
     if not session:
-        session_manager.create_session(session_id, user_id, channel_id, language)
-    else:
-        current_language = session_manager.get_language(session_id)
-        if current_language != language:
-            logger.info(f"🌐 [V1] Updating session {session_id} language: {current_language} → {language}")
-            session_manager.set_language(session_id, language)
-
+        session_manager.create_session(session_id, user_id, channel_id)
 
 
 def _update_session_and_result(session_id: str, query: str, result: Dict[str, Any], current_agent: AgentState):
@@ -72,11 +65,8 @@ def _create_error_response(error_msg: str, agent: str = "conversational") -> Dic
 async def _execute_tasker_agent(query: str, session_id: str, user_id: str, llm_model: str, token: str) -> Dict:
     """Execute with conversational tasker agent"""
     try:
-
-        # Get language from session to maintain consistency
-        language = session_manager.get_language(session_id)
         # Initialize conversational tasker agent with user-selected model
-        tasker_agent = TaskerAgent(llm_model=llm_model, token=token, user_id=user_id, language=language)
+        tasker_agent = TaskerAgent(llm_model=llm_model, token=token, user_id=user_id)
 
         # Process conversation through TaskerAgent
         result = await asyncio.get_event_loop().run_in_executor(

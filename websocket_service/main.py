@@ -114,7 +114,6 @@ async def call_ai_core_api(user_input: str, session_id: str, user_id: str, conne
                     "user_id": user_id,
                     "channel_id": f"academic_{session_id}",
                     "llm_model": "gemini-2.0-flash",
-                    "language": "VietNam",
                     "token": "",
                     "agent_context": "academic_writing"
                 }
@@ -127,7 +126,6 @@ async def call_ai_core_api(user_input: str, session_id: str, user_id: str, conne
                     "user_id": user_id,
                     "channel_id": session_id,
                     "llm_model": "gemini-2.0-flash",
-                    "language": "VietNam",
                     "token": ""
                 }
 

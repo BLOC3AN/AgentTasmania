@@ -18,7 +18,7 @@ class SessionManager:
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self.session_timeout = 3600  # 1 hour
     
-    def create_session(self, session_id: str, user_id: str = "", channel_id: str = "", language: str = "VietNam") -> Dict[str, Any]:
+    def create_session(self, session_id: str, user_id: str = "", channel_id: str = "") -> Dict[str, Any]:
         """
         Tạo session mới
         """
@@ -28,13 +28,12 @@ class SessionManager:
             "channel_id": channel_id,
             "current_agent": AgentState.CONVERSATION,  # V1 only uses conversation agent
             "conversation_history": [],
-            "language": language,
             "created_at": time.time(),
             "last_activity": time.time()
         }
 
         self.sessions[session_id] = session_data
-        logger.info(f"✅ Created new session: {session_id} with language: {language}")
+        logger.info(f"✅ Created new session: {session_id}")
         return session_data
     
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
@@ -102,26 +101,6 @@ class SessionManager:
         if len(self.sessions[session_id]["conversation_history"]) > 20:
             self.sessions[session_id]["conversation_history"] = self.sessions[session_id]["conversation_history"][-20:]
     
-
-
-
-    def get_language(self, session_id: str) -> str:
-        """
-        Lấy language từ session
-        """
-        session = self.get_session(session_id)
-        if session:
-            return session.get("language", "VietNam")
-        return "VietNam"
-
-    def set_language(self, session_id: str, language: str):
-        """
-        Cập nhật language cho session
-        """
-        if session_id in self.sessions:
-            self.sessions[session_id]["language"] = language
-            self.update_session_activity(session_id)
-            logger.info(f"🌐 Session {session_id}: Language updated to {language}")
     
     def get_conversation_context(self, session_id: str, last_n_turns: int = 5) -> str:
         """

@@ -24,12 +24,10 @@ class TaskerAgent:
     def __init__(
         self,
         llm_model: str = "gemini-2.0-flash",
-        language: str = "VietNam",
         token: str = "",
         user_id: str = ""
         ):
         self.llm_model = llm_model
-        self.language = language
         self.token = token
         self.user_id = user_id
 
@@ -77,7 +75,7 @@ class TaskerAgent:
         Run tasker conversation using V1 custom prompt and agent
         """
         start_time = time.time()
-        prompt = build_context_v1(yaml_path, user_query, self.language, session_id, self.user_id)
+        prompt = build_context_v1(yaml_path, user_query, session_id, self.user_id)
         logger.info(f"\nPROMTP: {prompt}\n")
         try:
             memory_class = RedisConversationMemory(session_id=session_id)

@@ -1,0 +1,15 @@
+# DocxDataProcessor Dependencies
+
+# Core dependencies
+requests>=2.31.0
+langchain>=0.1.0
+langchain-community>=0.0.20
+
+# Text processing
+python-docx>=0.8.11
+
+# Testing
+unittest2>=1.1.0
+
+# Optional: for better logging
+colorlog>=6.7.0

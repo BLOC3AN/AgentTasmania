@@ -20,7 +20,6 @@ async def route_worker_by_version(
     user_id: str = "",
     channel_id: str = "",
     llm_model: str = "",
-    language: str = "VietNam",
     token: str = ""
     ):
     """Route worker execution based on version with optional streaming support"""
@@ -39,7 +38,6 @@ async def route_worker_by_version(
             user_id=user_id,
             channel_id=channel_id,
             llm_model=llm_model,
-            language=language,
             token=token
         )
     else:
@@ -50,7 +48,6 @@ async def route_worker_by_version(
             user_id=user_id,
             channel_id=channel_id,
             llm_model=llm_model,
-            language=language,
             token=token
         )
 
@@ -79,7 +76,6 @@ class ExecuteRequest(BaseModel):
     user_id: str = ""
     channel_id: str = ""
     llm_model: str = ""
-    language: str = "VietNam"
     token: str = ""
 
 @router.post("/execute")
@@ -93,7 +89,6 @@ async def execute_worker(request: ExecuteRequest):
         user_id=request.user_id,
         channel_id=request.channel_id,
         llm_model=request.llm_model,
-        language=request.language,
         token=request.token
     )
 
