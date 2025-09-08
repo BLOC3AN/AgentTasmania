@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getOrCreateSessionId, createSessionResponse, isValidSessionId } from '@/lib/session';
 
 // Chat API endpoint that connects to the AI Core Service
 // Use internal Docker network URL for server-side requests
@@ -15,6 +16,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get or create session ID from cookie
+    const { sessionId, isNew } = getOrCreateSessionId(request);
+
+    // Validate session ID format
+    if (!isValidSessionId(sessionId)) {
+      console.warn('Invalid session ID format:', sessionId);
+    }
+
     // Call the AI Core Service
     const agentResponse = await fetch(`${AI_CORE_URL}/api/execute`, {
       method: 'POST',
@@ -24,7 +33,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         version: "v1.0",
         query: message.trim(),
-        session_id: request.headers.get('x-conversation-id') || `frontend_${Date.now()}`,
+        session_id: sessionId,
         user_id: "frontend_user",
         channel_id: "frontend",
         llm_model: "gemini-2.0-flash",
@@ -38,34 +47,59 @@ export async function POST(request: NextRequest) {
       console.error(`Agent service error: ${agentResponse.status} ${agentResponse.statusText}`);
 
       // Fallback response if agent service is unavailable
-      return NextResponse.json({
+      const fallbackData = {
         response: "I'm currently experiencing some technical difficulties. Please try again in a moment, or feel free to ask about academic writing topics like APA referencing, source integration, or citation techniques.",
         timestamp: new Date().toISOString(),
         fallback: true,
-      });
+        session_id: sessionId,
+        session_info: {
+          session_id: sessionId,
+          is_new_session: isNew
+        }
+      };
+
+      return createSessionResponse(fallbackData, sessionId);
     }
 
     const data = await agentResponse.json();
 
-    return NextResponse.json({
+    // Create response with session cookie
+    const responseData = {
       response: data.llmOutput || data.response || "No response from AI",
-      conversation_id: data.session_id,
+      conversation_id: data.session_id || sessionId,
+      session_id: sessionId,
       sources_used: data.sources_used || [],
       timestamp: new Date().toISOString(),
       success: data.success,
       model: data.model,
-      processing_time: data.response_time_ms
-    });
+      processing_time: data.response_time_ms,
+      session_info: {
+        session_id: sessionId,
+        is_new_session: isNew
+      }
+    };
+
+    return createSessionResponse(responseData, sessionId);
 
   } catch (error) {
     console.error('Chat API error:', error);
 
+    // Get session ID even in error case
+    const { sessionId, isNew } = getOrCreateSessionId(request);
+
     // Provide a helpful fallback response
-    return NextResponse.json({
+    const errorData = {
       response: "I'm having trouble connecting to my knowledge base right now. Please try again in a moment. In the meantime, remember that good academic writing involves proper source integration, clear APA citations, and thoughtful analysis of your sources.",
       timestamp: new Date().toISOString(),
       fallback: true,
-    });
+      session_id: sessionId,
+      session_info: {
+        session_id: sessionId,
+        is_new_session: isNew
+      }
+    };
+
+    return createSessionResponse(errorData, sessionId);
   }
 }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSession } from '@/hooks/useSession';
 
 interface Message {
   id: string;
@@ -16,6 +17,9 @@ export default function ChatBox() {
   const [isConnected] = useState(true); // Always connected for REST API
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Session management
+  const { sessionId, isLoading: sessionLoading, error: sessionError } = useSession();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,7 +43,7 @@ export default function ChatBox() {
   }, [isOpen, messages.length]);
 
   const sendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !sessionId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -48,7 +52,7 @@ export default function ChatBox() {
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev: Message[]) => [...prev, userMessage]);
     const messageText = inputText;
     setInputText('');
     setIsTyping(true);
@@ -58,7 +62,9 @@ export default function ChatBox() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-conversation-id': sessionId, // Send session ID in header for backward compatibility
         },
+        credentials: 'include', // Include cookies
         body: JSON.stringify({ message: messageText }),
       });
 
@@ -75,7 +81,7 @@ export default function ChatBox() {
         timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, agentMessage]);
+      setMessages((prev: Message[]) => [...prev, agentMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
@@ -84,13 +90,13 @@ export default function ChatBox() {
         sender: 'agent',
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev: Message[]) => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -109,11 +115,17 @@ export default function ChatBox() {
           {/* Header */}
           <div className="bg-blue-600 text-white p-4 rounded-t-lg flex justify-between items-center">
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 rounded-full bg-green-400"></div>
+              <div className={`w-2 h-2 rounded-full ${sessionId && !sessionLoading ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
               <span className="font-semibold">Academic Writing Assistant</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+              {sessionError && (
+                <div className="text-xs text-red-200" title={sessionError}>⚠</div>
+              )}
+              {sessionLoading && (
+                <div className="text-xs text-yellow-200">⟳</div>
+              )}
+              <div className={`w-2 h-2 rounded-full ${isConnected && sessionId ? 'bg-green-400' : 'bg-red-400'}`}></div>
               <button
                 onClick={toggleChat}
                 className="text-white hover:text-gray-200 transition-colors"
@@ -169,7 +181,7 @@ export default function ChatBox() {
               />
               <button
                 onClick={sendMessage}
-                disabled={!inputText.trim() || !isConnected}
+                disabled={!inputText.trim() || !isConnected || !sessionId || sessionLoading}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-sm"
               >
                 Send
