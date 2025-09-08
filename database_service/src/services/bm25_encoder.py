@@ -71,8 +71,15 @@ class BM25Encoder:
             token_counts = Counter(tokens)
             sparse_vector = {}
 
+            logger.debug(f"🔍 Encoding query: '{text}'")
+            logger.debug(f"📝 Tokens: {tokens}")
+            logger.debug(f"📊 Token counts: {dict(token_counts)}")
+
             # Use provided doc_length or calculate from tokens
             doc_len = doc_length if doc_length is not None else len(tokens)
+
+            matched_tokens = 0
+            skipped_tokens = []
 
             for token, tf in token_counts.items():
                 if token in self.idf and token in self.vocabulary:
@@ -86,6 +93,20 @@ class BM25Encoder:
 
                     if score > 0:
                         sparse_vector[token_idx] = score
+                        matched_tokens += 1
+                        logger.debug(f"✅ Token '{token}': idx={token_idx}, idf={idf:.3f}, score={score:.3f}")
+                    else:
+                        logger.debug(f"⚠️ Token '{token}': score={score:.3f} <= 0, skipped")
+                        skipped_tokens.append(f"{token}(score≤0)")
+                else:
+                    if token not in self.vocabulary:
+                        skipped_tokens.append(f"{token}(not_in_vocab)")
+                    elif token not in self.idf:
+                        skipped_tokens.append(f"{token}(no_idf)")
+
+            logger.debug(f"📊 Sparse vector result: {matched_tokens} terms, {len(skipped_tokens)} skipped")
+            if skipped_tokens:
+                logger.debug(f"❌ Skipped tokens: {skipped_tokens}")
 
             return sparse_vector
 

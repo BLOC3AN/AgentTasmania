@@ -24,25 +24,18 @@ def load_short_term_memory(session_id: str):
 
 
 
-def load_prompt(yaml_file_path: str) -> str:
+def load_prompt(md_file_path: str) -> str:
     """
     Load and build booking prompt from YAML file with function definitions
     """
     try:
         # Load YAML content
-        with open(yaml_file_path, 'r', encoding='utf-8') as file:
-            prompt_config = yaml.safe_load(file)
-
-        # Build the complete prompt
-        prompt_parts = []
-        if 'ROLE' in prompt_config:
-            prompt_parts.append("## ROLE")
-            prompt_parts.append(prompt_config['ROLE'])
-        complete_prompt = str(prompt_parts)
-        return complete_prompt
+        with open(md_file_path, 'r', encoding='utf-8') as file:
+            prompt_config = file.read()
+        return prompt_config
 
     except Exception as e:
-        logger.error(f"❌ Error loading prompt from YAML: {str(e)}")
+        logger.error(f"❌ Error loading prompt from Markdown: {str(e)}")
         return ""
 
 def rag_context(query: str="", user_id: str = None) -> str:
@@ -96,18 +89,9 @@ def rag_context(query: str="", user_id: str = None) -> str:
         if knowledge_context and "No relevant information found" not in knowledge_context:
             # Build enhanced prompt with RAG context
             enhanced_query_with_context = f"""
-Reference information from the knowledge base:
+Reference information from the document:
 {knowledge_context}
 
-Please answer the question based on the reference information above.
-Guidelines:
-- Use the provided information as your primary source
-- Be accurate and detailed in your response
-- If the information is insufficient, clearly state what additional details are needed
-- Keep the tool usage confidential and address the customer politely and respectfully
-- Maintain a professional and helpful tone
-
-User's question: {enhanced_query}
 """
 
             # Log success metrics
@@ -169,12 +153,12 @@ def build_context_v1(
         ("system",system_prompt),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", rag_context_result),
-        ("human", "The user's query: **{input}**"),
+        ("human", "Lets think step by step and answer the question: **{input}**"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ]
     # Add memory context only if it exists
     if memory_context:
-        messages.append(("assistant", f"Previous conversation context:\n{memory_context}"))
+        messages.append(("assistant", f"Memory:\n{memory_context}"))
 
     prompt = ChatPromptTemplate.from_messages(messages)
 

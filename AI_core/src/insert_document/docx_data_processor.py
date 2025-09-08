@@ -133,8 +133,8 @@ class DocxDataProcessor:
     
     def __init__(
         self,
-        embed_service_url: str = "http://localhost:8005",
-        database_service_url: str = "http://localhost:8002",
+        embed_service_url: str = "http://13.210.111.152:8005",
+        database_service_url: str = "http://13.210.111.152:8002",
         chunk_size: int = 500,
         chunk_overlap: int = 50,
         enable_bm25: bool = True
