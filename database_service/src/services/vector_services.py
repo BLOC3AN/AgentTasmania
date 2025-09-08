@@ -17,19 +17,33 @@ class VectorServices:
     def _initialize_bm25_corpus(self, qdrant_config):
         """Initialize BM25 with corpus from Qdrant - no training, just statistics."""
         if self._corpus_initialized:
+            logger.debug("BM25 corpus already initialized, skipping")
             return
 
         try:
+            logger.info("🔍 Initializing BM25 corpus from Qdrant documents...")
+
             # Fetch all documents from Qdrant to build corpus statistics
             documents = self._fetch_corpus_documents(qdrant_config)
+
             if documents:
+                logger.info(f"📄 Fetched {len(documents)} documents from Qdrant")
                 self.bm25_encoder.build_corpus_statistics(documents)
                 self._corpus_initialized = True
-                logger.info(f"BM25 corpus initialized with {len(documents)} documents")
+
+                # Get corpus info for logging
+                corpus_info = self.bm25_encoder.get_corpus_info()
+                logger.info(f"✅ BM25 corpus initialized successfully:")
+                logger.info(f"   📊 Documents: {corpus_info['corpus_size']}")
+                logger.info(f"   📝 Vocabulary: {corpus_info['vocabulary_size']} terms")
+                logger.info(f"   📏 Avg doc length: {corpus_info['average_doc_length']:.1f} tokens")
             else:
-                logger.warning("No documents found in Qdrant for BM25 corpus initialization")
+                logger.warning("❌ No documents found in Qdrant for BM25 corpus initialization")
+
         except Exception as e:
-            logger.error(f"Failed to initialize BM25 corpus: {e}")
+            logger.error(f"❌ Failed to initialize BM25 corpus: {e}")
+            import traceback
+            logger.debug(f"Stack trace: {traceback.format_exc()}")
 
     def _fetch_corpus_documents(self, qdrant_config) -> List[str]:
         """Fetch all document texts from Qdrant collection."""
@@ -93,27 +107,33 @@ class VectorServices:
                      week: Optional[str] = None) -> Dict[str, Any]:
         """Perform true hybrid search using Qdrant's native RRF."""
         try:
-            # Initialize BM25 corpus if not done yet
-            self._initialize_bm25_corpus(qdrant_config)
-
-            # Get dense embedding
+            # Get dense embedding first
             dense_vector = self.get_embedding(query_text)
             if not dense_vector:
                 logger.error("Failed to get dense embedding")
                 return {"results": [], "total_found": 0, "search_type": "error"}
 
-            # Get sparse vector
-            sparse_vector = self.bm25_encoder.encode(query_text)
+            # Initialize BM25 corpus if not done yet
+            self._initialize_bm25_corpus(qdrant_config)
 
-            # Perform true hybrid search using Qdrant's native capabilities
-            if sparse_vector and self._corpus_initialized:
-                return self._qdrant_hybrid_search(
-                    dense_vector, sparse_vector, qdrant_config,
-                    limit, score_threshold, subject, title, week
-                )
+            # Check if BM25 is ready for hybrid search
+            if self._corpus_initialized and self.bm25_encoder.corpus_stats_ready:
+                # Get sparse vector (now that corpus is ready)
+                sparse_vector = self.bm25_encoder.encode(query_text)
+
+                if sparse_vector:  # If we got a valid sparse vector
+                    logger.info(f"Performing hybrid search with {len(sparse_vector)} sparse terms")
+                    return self._qdrant_hybrid_search(
+                        dense_vector, sparse_vector, qdrant_config,
+                        limit, score_threshold, subject, title, week
+                    )
+                else:
+                    logger.warning("Sparse vector is empty, falling back to dense search")
             else:
-                logger.warning("BM25 not ready, falling back to dense search")
-                return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, subject, title, week)
+                logger.warning("⚠️ BM25 not ready, falling back to dense search")
+
+            # Fallback to dense search
+            return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, subject, title, week)
 
         except Exception as e:
             logger.error(f"Hybrid search failed: {e}")

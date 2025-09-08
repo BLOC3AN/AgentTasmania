@@ -90,6 +90,29 @@ async def get_collection_info():
         logger.log_exception("get_collection_info", e)
         raise HTTPException(status_code=500, detail="Failed to get collection info")
 
+@app.get("/debug/bm25-status")
+async def get_bm25_status():
+    """Debug endpoint to check BM25 corpus status"""
+    try:
+        if not vector_services:
+            raise HTTPException(status_code=503, detail="Vector services not initialized")
+
+        # Force initialize BM25 corpus
+        if not vector_services._corpus_initialized:
+            vector_services._initialize_bm25_corpus(qdrant_config)
+
+        # Get BM25 encoder status
+        bm25_status = {
+            "corpus_initialized": vector_services._corpus_initialized,
+            "encoder_ready": vector_services.bm25_encoder.corpus_stats_ready if vector_services.bm25_encoder else False,
+            "corpus_info": vector_services.bm25_encoder.get_corpus_info() if vector_services.bm25_encoder else None
+        }
+
+        return bm25_status
+    except Exception as e:
+        logger.log_exception("get_bm25_status", e)
+        raise HTTPException(status_code=500, detail="Failed to get BM25 status")
+
 @app.post("/search", response_model=VectorSearchResponse)
 async def search_vectors(request: VectorSearchRequest):
     try:
