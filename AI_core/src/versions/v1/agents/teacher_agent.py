@@ -15,7 +15,7 @@ logger = Logger(__name__)
 
 # Load tasker prompt from YAML
 current_dir = os.path.dirname(__file__)
-yaml_path = os.path.join(current_dir, "../", "prompts", "conversation", "conversation.yml")
+yaml_path = os.path.join(current_dir, "../", "prompts", "conversation", "conversation.md")
 
 class TaskerAgent:
     """

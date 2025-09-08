@@ -23,7 +23,7 @@ class KnowledgeBase:
 
     def search(self,
                query: str,
-               limit: int = 5,
+               limit: int = 8,
                score_threshold: float = 0.5,
                user_id: str = None) -> dict:
         """
@@ -204,8 +204,8 @@ class KnowledgeBase:
     def search_and_enhance(self,
                           query: str,
                           limit: int = 5,
-                          score_threshold: float = 0.5,
-                          max_context_length: int = 2000,
+                          score_threshold: float = 0.3,
+                          max_context_length: int = 5000,
                           user_id: str = None) -> dict:
         """
         Complete RAG pipeline: search + enhance context in one call.

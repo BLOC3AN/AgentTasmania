@@ -32,17 +32,10 @@ def load_prompt(md_file_path: str) -> str:
         # Load YAML content
         with open(md_file_path, 'r', encoding='utf-8') as file:
             prompt_config = file.read()
-
-        # Build the complete prompt
-        prompt_parts = []
-        if 'ROLE' in prompt_config:
-            prompt_parts.append("## ROLE")
-            prompt_parts.append(prompt_config['ROLE'])
-        complete_prompt = str(prompt_parts)
-        return complete_prompt
+        return prompt_config
 
     except Exception as e:
-        logger.error(f"❌ Error loading prompt from YAML: {str(e)}")
+        logger.error(f"❌ Error loading prompt from Markdown: {str(e)}")
         return ""
 
 def rag_context(query: str="", user_id: str = None) -> str:
@@ -96,8 +89,9 @@ def rag_context(query: str="", user_id: str = None) -> str:
         if knowledge_context and "No relevant information found" not in knowledge_context:
             # Build enhanced prompt with RAG context
             enhanced_query_with_context = f"""
-Reference information from the knowledge base:
+Reference information from the document:
 {knowledge_context}
+
 """
 
             # Log success metrics
@@ -159,7 +153,7 @@ def build_context_v1(
         ("system",system_prompt),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", rag_context_result),
-        ("human", "The user's query: **{input}**"),
+        ("human", "Lets think step by step and answer the question: **{input}**"),
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ]
     # Add memory context only if it exists
