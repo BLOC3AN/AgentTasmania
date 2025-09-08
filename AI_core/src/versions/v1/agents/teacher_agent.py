@@ -74,6 +74,7 @@ class TaskerAgent:
         """
         Run tasker conversation using V1 custom prompt and agent
         """
+        user_query = user_query.lower()
         start_time = time.time()
         prompt = build_context_v1(yaml_path, user_query, session_id, self.user_id)
         logger.info(f"\nPROMTP: {prompt}\n")
