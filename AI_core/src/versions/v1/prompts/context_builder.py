@@ -98,16 +98,6 @@ def rag_context(query: str="", user_id: str = None) -> str:
             enhanced_query_with_context = f"""
 Reference information from the knowledge base:
 {knowledge_context}
-
-Please answer the question based on the reference information above.
-Guidelines:
-- Use the provided information as your primary source
-- Be accurate and detailed in your response
-- If the information is insufficient, clearly state what additional details are needed
-- Keep the tool usage confidential and address the customer politely and respectfully
-- Maintain a professional and helpful tone
-
-User's question: {enhanced_query}
 """
 
             # Log success metrics
@@ -174,7 +164,7 @@ def build_context_v1(
     ]
     # Add memory context only if it exists
     if memory_context:
-        messages.append(("assistant", f"Previous conversation context:\n{memory_context}"))
+        messages.append(("assistant", f"Memory:\n{memory_context}"))
 
     prompt = ChatPromptTemplate.from_messages(messages)
 

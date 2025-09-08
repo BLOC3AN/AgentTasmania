@@ -176,53 +176,40 @@ services:
     networks:
       - agent-network
 
-  redis:
-      image: redis:7-alpine
-      container_name: redis
-      ports:
-        - "6389:6379"
-      volumes:
-        - ../data/redis:/data
-      restart: unless-stopped
-      networks:
-        - agent-network
-      command: redis-server --appendonly yes
+  dozzle:
+    container_name: dozzle-agent-education
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "5555:5555"
+    environment:
+      - DOZZLE_LEVEL=info
+      - DOZZLE_TAILSIZE=300
+      - DOZZLE_AUTH=false
+    command: ["--addr=:5555"] 
+    restart: unless-stopped
+    networks:
+      - agent-network
 
-
-  # dozzle:
-  #   container_name: dozzle-agent-education
-  #   image: amir20/dozzle:latest
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   ports:
-  #     - "5555:5555"
-  #   environment:
-  #     - DOZZLE_LEVEL=info
-  #     - DOZZLE_TAILSIZE=300
-  #     - DOZZLE_AUTH=false
-  #   command: ["--addr=:5555"] 
-  #   restart: unless-stopped
-  #   networks:
-  #     - agent-network
-
-    # Monitor Service
-  # monitor:
-  #   build:
-  #     context: ./monitor_service
-  #     dockerfile: Dockerfile
-  #   container_name: service-monitor
-  #   ports:
-  #     - "8004:8004"
-  #   environment:
-  #     - API_PORT=8004
-  #     - AI_CORE_URL=http://ai-core:8000
-  #     - MCP_SERVER_URL=http://mcp-server:8001
-  #     - DATABASE_URL=http://vectordb:8002
-  #     - WEBSOCKET_URL=http://websocket:8003
-  #     - EMBEDDING_URL=http://embedding:8005
-  #   networks:
-  #     - agent-network
-  #   restart: unless-stopped
+  # Monitor Service:
+  monitor:
+    build:
+      context: ./monitor_service
+      dockerfile: Dockerfile
+    container_name: service-monitor
+    ports:
+      - "8004:8004"
+    environment:
+      - API_PORT=8004
+      - AI_CORE_URL=http://ai-core:8000
+      - MCP_SERVER_URL=http://mcp-server:8001
+      - DATABASE_URL=http://vectordb:8002
+      - WEBSOCKET_URL=http://websocket:8003
+      - EMBEDDING_URL=http://embedding:8005
+    networks:
+      - agent-network
+    restart: unless-stopped
 
 
 networks:
