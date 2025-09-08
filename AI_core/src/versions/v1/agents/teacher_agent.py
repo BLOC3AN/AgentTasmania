@@ -77,7 +77,6 @@ class TaskerAgent:
         user_query = user_query.lower()
         start_time = time.time()
         prompt = build_context_v1(yaml_path, user_query, session_id, self.user_id)
-        logger.info(f"\nPROMTP: {prompt}\n")
         try:
             memory_class = RedisConversationMemory(session_id=session_id)
             # Use RedisBackedMemory instead of regular ConversationBufferMemory
@@ -88,38 +87,34 @@ class TaskerAgent:
                 memory_key="chat_history",
                 return_messages=True
             )
-            logger.info(f"🧰 Available tools: {[tool.name for tool in self.tools]}")
+
+            logger.info(f"Available tools: {[tool.name for tool in self.tools]}")
             
             before_invoke = time.time()
             logger.info(f"⏱️ Time to create agent: {before_invoke - start_time:.4f} seconds")
 
-            if len(self.tools) == 0:
-                logger.warning("🔧 No tools available, using direct LLM invocation")
-                # Sử dụng LLM trực tiếp
-                formatted_prompt = prompt.format_messages(
-                    input=user_query,
-                    chat_history=memory.chat_memory.messages if hasattr(memory, 'chat_memory') else [],
-                    agent_scratchpad=[]
-                )
-                result_content = self.llm_model_instance.llm.invoke(formatted_prompt).content
-                result = {"output": result_content}
-            else:
-                agent = create_tool_calling_agent(self.llm_model_instance.llm, self.tools, prompt)
-                agent_executor = AgentExecutor(
-                    agent=agent,
-                    tools=self.tools,
-                    verbose=self.VERBOSE,
-                    max_iterations=self.MAX_ITERATIONS,
-                    early_stopping_method=self.EARLY_STOPPING_METHOD,
-                    max_execution_time=self.MAX_EXECUTION_TIME,
-                    handle_parsing_errors=self.HANDLE_PARSING_ERRORS,
-                    return_intermediate_steps=self.RETURN_INTERMEDIATE_STEPS
-                )
-                chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
-                result = agent_executor.invoke({
-                    "input": user_query,
-                    "chat_history": chat_history
-                })
+            formatted_prompt = prompt.format_messages(
+                input=user_query,
+                chat_history=memory.chat_memory.messages if hasattr(memory, 'chat_memory') else [],
+                agent_scratchpad=[]
+            )
+            logger.info(f"\nPROMTP: \n{formatted_prompt}\n")
+            agent = create_tool_calling_agent(self.llm_model_instance.llm, self.tools, formatted_prompt)
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=self.tools,
+                verbose=self.VERBOSE,
+                max_iterations=self.MAX_ITERATIONS,
+                early_stopping_method=self.EARLY_STOPPING_METHOD,
+                max_execution_time=self.MAX_EXECUTION_TIME,
+                handle_parsing_errors=self.HANDLE_PARSING_ERRORS,
+                return_intermediate_steps=self.RETURN_INTERMEDIATE_STEPS
+            )
+            chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
+            result = agent_executor.invoke({
+                "input": user_query,
+                "chat_history": chat_history
+            })
 
             # Save conversation to Redis memory
             try:
