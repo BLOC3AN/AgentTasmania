@@ -52,7 +52,7 @@ def example_basic_usage():
     processor = DocxDataProcessor(
         embed_service_url="http://localhost:8005",
         database_service_url="http://localhost:8002",
-        chunk_size=300,
+        chunk_size=1500,
         chunk_overlap=50
     )
     

@@ -1,10 +1,10 @@
+version: '3.8'
+
 services:
   # AI Core Agent Service
   ai-core:
-    build:
-      context: ./AI_core
-      dockerfile: Dockerfile
     container_name: service-ai-core
+    image: vanhoadotbui2628/ai-core:v1.0.0
     ports:
       - "8000:8000"
     environment:
@@ -25,10 +25,8 @@ services:
 
   # MCP Server Service
   mcp-server:
-    build:
-      context: ./MCP_server
-      dockerfile: Dockerfile
     container_name: service-mcp-server
+    image: vanhoadotbui2628/mcp-server:v1.0.0
     ports:
       - "8001:8001"
     environment:
@@ -42,10 +40,8 @@ services:
 
   # Embedding Service
   embedding:
-    build:
-      context: ./embedding_service
-      dockerfile: Dockerfile
     container_name: embedding
+    image: vanhoadotbui2628/embedding:v1.0.0
     ports:
       - "8005:8005"
     environment:
@@ -63,13 +59,10 @@ services:
       retries: 3
       start_period: 120s
 
-  # Database Service (Postgres + Qdrant)
-
+  # VectorDB Service
   vectordb:
-    build:
-      context: ./database_service
-      dockerfile: Dockerfile
     container_name: service-vectordb
+    image: vanhoadotbui2628/vectordb:v1.0.0
     ports:
       - "8002:8002"
     environment:
@@ -82,13 +75,10 @@ services:
       - agent-network
     restart: unless-stopped
 
-
   # WebSocket Service
   websocket:
-    build:
-      context: ./websocket_service
-      dockerfile: Dockerfile
     container_name: service-websocket
+    image: vanhoadotbui2628/websocket:v1.0.0
     ports:
       - "8003:8003"
     environment:
@@ -108,35 +98,22 @@ services:
 
   # Frontend Service
   frontend:
-    build:
-      context: ./frontend_service
-      dockerfile: Dockerfile.dev
     container_name: service-frontend
+    image: vanhoadotbui2628/frontend:v1.0.0
     ports:
       - "3000:3000"
-    volumes:
-      # Mount source code for development hot reload
-      - ./frontend_service/src:/app/src:ro
-      - ./frontend_service/public:/app/public:ro
-      - ./frontend_service/package.json:/app/package.json:ro
-      - ./frontend_service/next.config.ts:/app/next.config.ts:ro
-      - ./frontend_service/tsconfig.json:/app/tsconfig.json:ro
-      - ./frontend_service/postcss.config.mjs:/app/postcss.config.mjs:ro
-      - ./frontend_service/eslint.config.mjs:/app/eslint.config.mjs:ro
-      # Exclude node_modules to avoid conflicts
-      - /app/node_modules
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_WEBSOCKET_URL=ws://localhost:8003
+      - NEXT_PUBLIC_API_URL=http://ai-core:8000
+      - NEXT_PUBLIC_WEBSOCKET_URL=ws://websocket:8003
     networks:
       - agent-network
     restart: unless-stopped
     depends_on:
       - ai-core
       - websocket
+      - mcp-server # thêm depends_on để đảm bảo mcp-server khởi động trước
 
-  
-  # Database Service (Postgres)
+  # Postgres Service
   postgres:
     image: postgres:15
     container_name: postgres
@@ -146,7 +123,9 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: Hai@30032000
       POSTGRES_DB: mydb
-    # Optional: Redis for caching (future use)
+    networks:
+      - agent-network
+
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -159,6 +138,8 @@ services:
       - agent-network
     command: redis-server --appendonly yes
 
+
+  # Qdrant Service
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
@@ -167,62 +148,13 @@ services:
       - "6333:6333" # For REST API
       - "6334:6334" # For gRPC
     expose:
-      - 6333 # For REST API
-      - 6334 # For gRPC
-      - 6335 # For internal communication
+      - 6333
+      - 6334
+      - 6335
     volumes:
       - ./data/qdrant:/qdrant/storage
     networks:
       - agent-network
-
-  redis:
-      image: redis:7-alpine
-      container_name: redis
-      ports:
-        - "6389:6379"
-      volumes:
-        - ../data/redis:/data
-      restart: unless-stopped
-      networks:
-        - agent-network
-      command: redis-server --appendonly yes
-
-
-  # dozzle:
-  #   container_name: dozzle-agent-education
-  #   image: amir20/dozzle:latest
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   ports:
-  #     - "5555:5555"
-  #   environment:
-  #     - DOZZLE_LEVEL=info
-  #     - DOZZLE_TAILSIZE=300
-  #     - DOZZLE_AUTH=false
-  #   command: ["--addr=:5555"] 
-  #   restart: unless-stopped
-  #   networks:
-  #     - agent-network
-
-    # Monitor Service
-  # monitor:
-  #   build:
-  #     context: ./monitor_service
-  #     dockerfile: Dockerfile
-  #   container_name: service-monitor
-  #   ports:
-  #     - "8004:8004"
-  #   environment:
-  #     - API_PORT=8004
-  #     - AI_CORE_URL=http://ai-core:8000
-  #     - MCP_SERVER_URL=http://mcp-server:8001
-  #     - DATABASE_URL=http://vectordb:8002
-  #     - WEBSOCKET_URL=http://websocket:8003
-  #     - EMBEDDING_URL=http://embedding:8005
-  #   networks:
-  #     - agent-network
-  #   restart: unless-stopped
-
 
 networks:
   agent-network:
