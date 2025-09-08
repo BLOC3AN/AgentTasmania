@@ -147,6 +147,7 @@ services:
       POSTGRES_PASSWORD: Hai@30032000
       POSTGRES_DB: mydb
     # Optional: Redis for caching (future use)
+    
   redis:
     image: redis:7-alpine
     container_name: redis

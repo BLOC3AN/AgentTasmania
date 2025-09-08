@@ -113,6 +113,40 @@ async def get_bm25_status():
         logger.log_exception("get_bm25_status", e)
         raise HTTPException(status_code=500, detail="Failed to get BM25 status")
 
+@app.post("/debug/test-bm25-encode")
+async def test_bm25_encode(request: dict):
+    """Debug endpoint to test BM25 encoding directly"""
+    try:
+        if not vector_services:
+            raise HTTPException(status_code=503, detail="Vector services not initialized")
+
+        query_text = request.get("query_text", "test")
+
+        # Force initialize BM25 corpus
+        if not vector_services._corpus_initialized:
+            vector_services._initialize_bm25_corpus(qdrant_config)
+
+        # Test encoding
+        sparse_vector = vector_services.bm25_encoder.encode(query_text)
+
+        # Get detailed info
+        tokens = vector_services.bm25_encoder.tokenize(query_text)
+
+        result = {
+            "query_text": query_text,
+            "tokens": tokens,
+            "sparse_vector": sparse_vector,
+            "sparse_vector_size": len(sparse_vector),
+            "corpus_ready": vector_services.bm25_encoder.corpus_stats_ready,
+            "vocabulary_size": len(vector_services.bm25_encoder.vocabulary),
+            "sample_vocabulary": list(vector_services.bm25_encoder.vocabulary.keys())[:10]
+        }
+
+        return result
+    except Exception as e:
+        logger.log_exception("test_bm25_encode", e)
+        raise HTTPException(status_code=500, detail="Failed to test BM25 encoding")
+
 @app.post("/search", response_model=VectorSearchResponse)
 async def search_vectors(request: VectorSearchRequest):
     try:

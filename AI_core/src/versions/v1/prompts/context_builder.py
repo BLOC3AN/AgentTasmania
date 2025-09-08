@@ -24,14 +24,14 @@ def load_short_term_memory(session_id: str):
 
 
 
-def load_prompt(yaml_file_path: str) -> str:
+def load_prompt(md_file_path: str) -> str:
     """
     Load and build booking prompt from YAML file with function definitions
     """
     try:
         # Load YAML content
-        with open(yaml_file_path, 'r', encoding='utf-8') as file:
-            prompt_config = yaml.safe_load(file)
+        with open(md_file_path, 'r', encoding='utf-8') as file:
+            prompt_config = file.read()
 
         # Build the complete prompt
         prompt_parts = []

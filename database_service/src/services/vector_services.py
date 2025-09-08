@@ -86,15 +86,19 @@ class VectorServices:
     def get_embedding(self, text: str) -> Optional[List[float]]:
         """Get embedding from embedding service."""
         try:
+            logger.debug(f"🔍 Getting embedding for: '{text}' from {self.embedding_service_url}")
             response = requests.post(
                 f"{self.embedding_service_url}/embed",
                 json={"text": text},
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()["embedding"]
+            embedding = response.json()["embedding"]
+            logger.debug(f"✅ Got embedding with dimension: {len(embedding)}")
+            return embedding
         except Exception as e:
-            logger.error(f"Failed to get embedding: {e}")
+            logger.error(f"❌ Failed to get embedding for '{text}': {e}")
+            logger.error(f"   URL: {self.embedding_service_url}/embed")
             return None
 
     def hybrid_search(self,
