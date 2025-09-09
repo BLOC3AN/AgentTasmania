@@ -84,6 +84,41 @@ fix_python_modules() {
             fi
         done
     fi
+
+    # Special handling for ASR Service
+    if [ "$service_name" = "ASR Service" ]; then
+        print_status "Fixing ASR Service model path..."
+        cd "$service_dir"
+
+        # Fix main.py to use a working model
+        if [ -f "main.py" ]; then
+            # Backup original
+            cp main.py main.py.backup
+
+            # Replace model path with a working one
+            sed -i 's|"./onnx-whisper-tiny"|"openai/whisper-tiny"|g' main.py
+            print_status "ASR model path fixed to use openai/whisper-tiny"
+        fi
+        cd "$PROJECT_ROOT"
+    fi
+
+    # Special handling for Database Service
+    if [ "$service_name" = "Database Service" ]; then
+        print_status "Fixing Database Service qdrant imports..."
+        cd "$service_dir"
+
+        # Fix qdrant_client.py imports
+        if [ -f "src/database/qdrant_client.py" ]; then
+            # Backup original
+            cp src/database/qdrant_client.py src/database/qdrant_client.py.backup
+
+            # Remove problematic Modifier import
+            sed -i 's/, Modifier//g' src/database/qdrant_client.py
+            sed -i 's/Modifier, //g' src/database/qdrant_client.py
+            print_status "Database Service qdrant imports fixed"
+        fi
+        cd "$PROJECT_ROOT"
+    fi
 }
 
 # Function to install Python dependencies
