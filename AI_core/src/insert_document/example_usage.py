@@ -18,9 +18,13 @@ def check_services():
     """Kiểm tra các service có hoạt động không"""
     import requests
 
+    # services = {
+    #     "Embedding Service": "http://13.210.111.152:8005/health",
+    #     "Database Service": "http://13.210.111.152:8002/health"
+    # }
     services = {
-        "Embedding Service": "http://13.210.111.152:8005/health",
-        "Database Service": "http://13.210.111.152:8002/health"
+        "Embedding Service": "http://localhost:8005/health",
+        "Database Service": "http://localhost:8002/health"
     }
 
     print("🔍 Checking services...")
@@ -47,13 +51,19 @@ def process_module6_file_with_services():
     print("="*60)
 
     # Initialize processor với services
+    # processor = DocxDataProcessor(
+    #     embed_service_url="http://13.210.111.152:8005",
+    #     database_service_url="http://13.210.111.152:8002",
+    #     chunk_size=700,
+    #     chunk_overlap=10
+    # )
+
     processor = DocxDataProcessor(
-        embed_service_url="http://13.210.111.152:8005",
-        database_service_url="http://13.210.111.152:8002",
+        embed_service_url="http://localhost:8005",
+        database_service_url="http://localhost:8002",
         chunk_size=700,
         chunk_overlap=10
     )
-
     # File path
     file_path = "./data/Module 6 S2 2025.docx"
 

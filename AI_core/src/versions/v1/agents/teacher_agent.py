@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from src.memory.conversation.redisMemory import RedisConversationMemory
+from src.memory.conversation.redisMemory import RedisConversationMemory,RedisBackedMemory
 from src.mcp_client.mcp_discovery import discover_and_create_mcp_tools
 from src.versions.v1.prompts.context_builder import build_context_v1
 from src.utils.logger import Logger
@@ -44,7 +44,7 @@ class TaskerAgent:
         self.MAX_EXECUTION_TIME = 10
         self.HANDLE_PARSING_ERRORS = True
         self.RETURN_INTERMEDIATE_STEPS = True
-        self.VERBOSE = False
+        self.VERBOSE = True
 
     def _setup_mcp_tools(self):
         """Setup tasker tools for the agent using enhanced tasker knowledge"""
@@ -74,13 +74,11 @@ class TaskerAgent:
         """
         Run tasker conversation using V1 custom prompt and agent
         """
-        user_query = user_query.lower()
         start_time = time.time()
-        prompt = build_context_v1(yaml_path, user_query, session_id, self.user_id)
+        prompt = build_context_v1(yaml_path, user_query, self.user_id)
         try:
             memory_class = RedisConversationMemory(session_id=session_id)
-            # Use RedisBackedMemory instead of regular ConversationBufferMemory
-            from src.memory.conversation.redisMemory import RedisBackedMemory
+            
             memory = RedisBackedMemory(
                 session_id=session_id,
                 redis_client=memory_class.redis_client,
@@ -93,13 +91,8 @@ class TaskerAgent:
             before_invoke = time.time()
             logger.info(f"⏱️ Time to create agent: {before_invoke - start_time:.4f} seconds")
 
-            formatted_prompt = prompt.format_messages(
-                input=user_query,
-                chat_history=memory.chat_memory.messages if hasattr(memory, 'chat_memory') else [],
-                agent_scratchpad=[]
-            )
-            logger.info(f"\nPROMTP: \n{formatted_prompt}\n")
-            agent = create_tool_calling_agent(self.llm_model_instance.llm, self.tools, formatted_prompt)
+            logger.info(f"\nPROMTP: \n{prompt}\n")
+            agent = create_tool_calling_agent(self.llm_model_instance.llm, self.tools,prompt)
             agent_executor = AgentExecutor(
                 agent=agent,
                 tools=self.tools,
@@ -108,7 +101,7 @@ class TaskerAgent:
                 early_stopping_method=self.EARLY_STOPPING_METHOD,
                 max_execution_time=self.MAX_EXECUTION_TIME,
                 handle_parsing_errors=self.HANDLE_PARSING_ERRORS,
-                return_intermediate_steps=self.RETURN_INTERMEDIATE_STEPS
+                return_intermediate_steps=self.RETURN_INTERMEDIATE_STEPS,
             )
             chat_history = memory.chat_memory.messages if hasattr(memory, 'chat_memory') else []
             result = agent_executor.invoke({
@@ -122,7 +115,6 @@ class TaskerAgent:
                     {"input": user_query},
                     {"output": result.get("output", "")}
                 )
-                logger.info("Successfully saved conversation to Redis")
             except Exception as e:
                 logger.error(f"Error saving conversation to Redis: {str(e)}")
 
@@ -130,6 +122,7 @@ class TaskerAgent:
             response_time_ms = int((end_time - start_time) * 1000)
 
             logger.info(f"⏱️ Total execution time: {response_time_ms}ms")
+            logger.info(f"💬 Agent response: {result}")
             # Log intermediate steps
             if result.get('intermediate_steps'):
                 with open("intermediate_steps.txt", "a") as f:
