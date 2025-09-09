@@ -111,31 +111,114 @@ start_python_service() {
     print_status "$service_name started with PID $pid"
 }
 
+# Function to install Node.js binary if needed
+install_nodejs_if_needed() {
+    if ! command -v node &> /dev/null || ! node --version &> /dev/null; then
+        print_warning "Node.js not working properly. Installing from binary..."
+
+        # Create bin directory
+        mkdir -p ~/bin
+
+        # Download Node.js v18 LTS
+        NODE_VERSION="18.20.4"
+        NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"
+
+        if command -v wget &> /dev/null; then
+            wget "$NODE_URL" -O node.tar.xz
+        elif command -v curl &> /dev/null; then
+            curl -L "$NODE_URL" -o node.tar.xz
+        else
+            print_error "Cannot download Node.js. wget/curl not available"
+            return 1
+        fi
+
+        # Extract and install
+        tar -xf node.tar.xz
+        cp -r "node-v${NODE_VERSION}-linux-x64"/* ~/bin/
+        rm -rf node.tar.xz "node-v${NODE_VERSION}-linux-x64"
+
+        # Update PATH
+        export PATH="$HOME/bin/bin:$PATH"
+
+        print_status "Node.js installed successfully!"
+    fi
+}
+
+# Function to fix frontend package.json if needed
+fix_frontend_package() {
+    if [ -f "$PROJECT_ROOT/frontend_service/package.json" ]; then
+        cd "$PROJECT_ROOT/frontend_service"
+
+        # Check if we have problematic packages
+        if grep -q "tailwindcss.*4" package.json || grep -q "next.*15" package.json; then
+            print_warning "Fixing package.json for compatibility..."
+
+            # Backup original
+            cp package.json package.json.backup
+
+            # Create compatible package.json
+            cat > package.json << 'EOF'
+{
+  "name": "utas-writing-practice",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@types/ws": "^8.5.10",
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "socket.io-client": "^4.7.5",
+    "uuid": "^9.0.1",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^9.0.8",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5",
+    "tailwindcss": "^3.4.4",
+    "typescript": "^5.5.3"
+  }
+}
+EOF
+            print_status "Package.json fixed for compatibility"
+        fi
+
+        cd "$PROJECT_ROOT"
+    fi
+}
+
 # Function to check system dependencies
 check_system_deps() {
     print_status "Checking system dependencies..."
-    
+
     # Check Python
     if ! command -v python3 &> /dev/null; then
         print_error "Python3 is required but not installed!"
         print_error "Run: ./setup_container.sh to install dependencies"
         exit 1
     fi
-    
-    # Check Node.js
-    if ! command -v node &> /dev/null; then
-        print_error "Node.js is required but not installed!"
-        print_error "Run: ./setup_container.sh to install dependencies"
-        exit 1
+
+    # Try to fix Node.js if needed
+    install_nodejs_if_needed
+
+    # Check Node.js again
+    if ! command -v node &> /dev/null || ! node --version &> /dev/null; then
+        print_warning "Node.js not available. Frontend service will be skipped."
+        export SKIP_FRONTEND=true
+    else
+        print_status "Node.js version: $(node --version)"
+        export SKIP_FRONTEND=false
     fi
-    
-    # Check npm
-    if ! command -v npm &> /dev/null; then
-        print_error "npm is required but not installed!"
-        print_error "Run: ./setup_container.sh to install dependencies"
-        exit 1
-    fi
-    
+
     print_status "System dependencies check completed!"
 }
 
@@ -227,11 +310,36 @@ start_services() {
     install_python_deps "$PROJECT_ROOT/monitor_service" "Monitor Service"
     install_python_deps "$PROJECT_ROOT/ASR_service" "ASR Service"
     
-    # Install frontend dependencies
-    print_status "Installing frontend dependencies..."
-    cd "$PROJECT_ROOT/frontend_service"
-    npm install
-    cd "$PROJECT_ROOT"
+    # Install frontend dependencies (if Node.js is available)
+    if [ "$SKIP_FRONTEND" != "true" ]; then
+        print_status "Installing frontend dependencies..."
+
+        # Fix package.json first
+        fix_frontend_package
+
+        cd "$PROJECT_ROOT/frontend_service"
+
+        # Clean up first
+        rm -rf node_modules package-lock.json 2>/dev/null || true
+
+        # Make sure we're using the right npm
+        export PATH="$HOME/bin/bin:$PATH"
+
+        # Try npm install with fallback options
+        npm install --legacy-peer-deps --no-optional 2>/dev/null || {
+            print_warning "npm install failed. Trying with different options..."
+            npm install --force --no-optional 2>/dev/null || {
+                print_warning "Standard npm install failed. Trying basic install..."
+                npm install --no-optional --ignore-engines 2>/dev/null || {
+                    print_error "Frontend dependencies installation failed. Skipping frontend service."
+                    export SKIP_FRONTEND=true
+                }
+            }
+        }
+        cd "$PROJECT_ROOT"
+    else
+        print_warning "Skipping frontend dependencies installation (Node.js not available)"
+    fi
     
     # Start Python services in order
     print_status "Starting Python services..."
@@ -258,18 +366,27 @@ start_services() {
     start_python_service "$PROJECT_ROOT/monitor_service" "monitor" $MONITOR_PORT "main.py"
     sleep 3
     
-    # Start frontend service
-    print_service "Starting Frontend service on port $FRONTEND_PORT..."
-    cd "$PROJECT_ROOT/frontend_service"
-    npm run dev > "$LOG_DIR/frontend.log" 2>&1 &
-    local frontend_pid=$!
-    echo "frontend:$frontend_pid" >> "$PID_FILE"
-    cd "$PROJECT_ROOT"
-    print_status "Frontend started with PID $frontend_pid"
+    # Start frontend service (if available)
+    if [ "$SKIP_FRONTEND" != "true" ]; then
+        print_service "Starting Frontend service on port $FRONTEND_PORT..."
+        cd "$PROJECT_ROOT/frontend_service"
+
+        # Make sure we're using the right node/npm
+        export PATH="$HOME/bin/bin:$PATH"
+
+        # Try to start frontend with fallback
+        npm run dev > "$LOG_DIR/frontend.log" 2>&1 &
+        local frontend_pid=$!
+        echo "frontend:$frontend_pid" >> "$PID_FILE"
+        cd "$PROJECT_ROOT"
+        print_status "Frontend started with PID $frontend_pid"
+    else
+        print_warning "Skipping Frontend service (Node.js issues)"
+    fi
     
     # Wait for services to be ready
     sleep 5
-    print_status "All services started! Check logs in $LOG_DIR/"
+    print_status "Services started! Check logs in $LOG_DIR/"
     print_status "Services are running on the following ports:"
     echo "  - AI Core: http://localhost:$AI_CORE_PORT"
     echo "  - MCP Server: http://localhost:$MCP_SERVER_PORT"
@@ -278,7 +395,12 @@ start_services() {
     echo "  - Monitor: http://localhost:$MONITOR_PORT"
     echo "  - Embedding: http://localhost:$EMBEDDING_PORT"
     echo "  - ASR: http://localhost:$ASR_PORT"
-    echo "  - Frontend: http://localhost:$FRONTEND_PORT"
+
+    if [ "$SKIP_FRONTEND" != "true" ]; then
+        echo "  - Frontend: http://localhost:$FRONTEND_PORT"
+    else
+        echo "  - Frontend: SKIPPED (Node.js issues)"
+    fi
     
     print_status "To stop all services, run: ./start_services_container.sh stop"
 }
