@@ -17,11 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Export ONNX model automatically during build
-RUN echo "Exporting Whisper model to ONNX..." && \
-    python export_onnx.py && \
-    echo "Model export completed successfully" && \
-    ls -la onnx-whisper-tiny/
+# Pre-download Whisper model during build
+RUN echo "Pre-downloading Whisper model..." && \
+    python -c "import whisper; whisper.load_model('tiny.en')" && \
+    echo "Model download completed successfully"
 
 # Expose port
 EXPOSE 8006

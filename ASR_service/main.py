@@ -3,36 +3,42 @@ import logging
 import base64
 import json
 import numpy as np
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 import soundfile as sf
 import torch
-import librosa
 import io
-from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
-from transformers import WhisperProcessor
+import whisper
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global variables for model and processor
+# Global variables for model
 model = None
-processor = None
+device = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    global model, processor
+    global model, device
     try:
         logger.info("Loading ASR model...")
-        model = ORTModelForSpeechSeq2Seq.from_pretrained(
-            "./onnx-whisper-tiny",
-            provider="CPUExecutionProvider"
-        )
-        processor = WhisperProcessor.from_pretrained("./onnx-whisper-tiny")
-        logger.info("ASR model loaded successfully")
+
+        # Check for GPU availability
+        if torch.cuda.is_available():
+            device = "cuda"
+            logger.info(f"GPU detected: {torch.cuda.get_device_name(0)}")
+        else:
+            device = "cpu"
+            logger.info("No GPU detected, using CPU")
+
+        # Load Whisper model (try base for better speed/quality balance)
+        model = whisper.load_model("base.en", device=device)
+        logger.info(f"Whisper model loaded successfully on {device}")
+
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
         raise
@@ -44,53 +50,127 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ASR WebSocket Service",
-    description="Real-time Speech Recognition service using Whisper ONNX",
+    description="Real-time Speech Recognition service using Whisper",
     version="1.0.0",
     lifespan=lifespan
 )
 
+# Add compression middleware
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    if model is None or processor is None:
+    if model is None:
         raise HTTPException(status_code=503, detail="Model not ready")
-    return {"status": "healthy", "model": "whisper-tiny"}
+    return {"status": "healthy", "model": "whisper-base.en", "device": device}
+
+@app.post("/asr")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """HTTP endpoint for audio transcription"""
+    start_time = time.time()
+    logger.info(f"=== ASR Request Started ===")
+
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not ready")
+
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('audio/'):
+        raise HTTPException(status_code=400, detail="File must be an audio file")
+
+    try:
+        # Read file content
+        read_start = time.time()
+        audio_bytes = await file.read()
+        read_time = time.time() - read_start
+        logger.info(f"File read time: {read_time:.3f}s, size: {len(audio_bytes)} bytes")
+
+        # Process audio and get transcription
+        process_start = time.time()
+        transcription = process_audio_data(audio_bytes)
+        process_time = time.time() - process_start
+
+        total_time = time.time() - start_time
+        logger.info(f"Processing time: {process_time:.3f}s")
+        logger.info(f"Total request time: {total_time:.3f}s")
+        logger.info(f"=== ASR Request Completed ===")
+
+        return {
+            "status": "success",
+            "transcription": transcription,
+            "filename": file.filename,
+            "device": device,
+            "timing": {
+                "file_read": f"{read_time:.3f}s",
+                "processing": f"{process_time:.3f}s",
+                "total": f"{total_time:.3f}s"
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 def process_audio_data(audio_data: bytes) -> str:
     """Process audio data and return transcription"""
-    global model, processor
+    global model
 
-    if model is None or processor is None:
+    if model is None:
         raise Exception("Model not loaded")
 
     try:
         # Load audio from bytes
+        load_start = time.time()
         audio, rate = sf.read(io.BytesIO(audio_data))
+        load_time = time.time() - load_start
+        logger.info(f"Audio load time: {load_time:.3f}s, rate: {rate}Hz, shape: {audio.shape}")
 
-        # Resample to 16kHz if needed (Whisper requirement)
-        target_sr = 16000
-        if rate != target_sr:
-            logger.info(f"Resampling audio from {rate}Hz to {target_sr}Hz")
-            audio = librosa.resample(audio, orig_sr=rate, target_sr=target_sr)
-            rate = target_sr
+        # Ensure audio is float32 (required by Whisper)
+        prep_start = time.time()
+        audio = audio.astype(np.float32)
 
-        # Ensure mono audio
+        # Convert to mono if stereo (simple average)
         if len(audio.shape) > 1:
+            logger.info("Converting stereo to mono")
             audio = np.mean(audio, axis=1)
 
-        # Process audio with Whisper
-        inputs = processor(audio, sampling_rate=rate, return_tensors="pt")
+        prep_time = time.time() - prep_start
+        logger.info(f"Audio preprocessing time: {prep_time:.3f}s, final shape: {audio.shape}")
 
-        # Inference
-        with torch.no_grad():
-            generated_ids = model.generate(**inputs)
+        # Let Whisper handle resampling internally (faster than librosa)
+        # Whisper automatically resamples to 16kHz
 
-        # Decode
-        text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        # Transcribe with Whisper (includes automatic preprocessing)
+        transcribe_start = time.time()
+        logger.info("Starting Whisper transcription...")
+        result = model.transcribe(
+            audio,
+            language="en",  # Force English for faster processing
+            task="transcribe",  # Explicit task
+            fp16=True if device == "cuda" else False,  # Use FP16 on GPU for speed
+            verbose=False,  # Reduce logging overhead
+            # Performance optimizations
+            beam_size=1,  # Faster beam search (default is 5)
+            best_of=1,    # Only generate 1 candidate (default is 5)
+            temperature=0,  # Deterministic output, faster
+            compression_ratio_threshold=2.4,  # Skip low-quality segments faster
+            no_speech_threshold=0.6,  # Skip silence faster
+            condition_on_previous_text=False  # Don't use context, faster
+        )
+        transcribe_time = time.time() - transcribe_start
+        logger.info(f"Whisper transcription time: {transcribe_time:.3f}s")
+
+        text = result["text"].strip()
+        logger.info(f"Transcription result: '{text}'")
 
         # Clean up memory
-        del inputs, generated_ids
+        cleanup_start = time.time()
         gc.collect()
+        if device == "cuda":
+            torch.cuda.empty_cache()
+        cleanup_time = time.time() - cleanup_start
+        logger.info(f"Memory cleanup time: {cleanup_time:.3f}s")
 
         return text
 
