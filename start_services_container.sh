@@ -600,11 +600,19 @@ EOF
             # Backup original
             cp src/app/page.tsx src/app/page.tsx.backup
 
-            # Create a working chat page
+            # Create a working chat page with hydration fix
             cat > src/app/page.tsx << 'EOF'
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
+
+// Prevent hydration issues by making the component client-only
+const ChatInterface = dynamic(() => Promise.resolve(ChatInterfaceComponent), {
+  ssr: false,
+});
+
+function ChatInterfaceComponent() {
 
 interface Message {
   id: string;
@@ -836,8 +844,29 @@ export default function Home() {
     </div>
   );
 }
+
+export default function Home() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading chat...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <ChatInterface />;
+}
 EOF
-            print_status "Main page.tsx fixed with working chat interface"
+            print_status "Main page.tsx fixed with hydration fix"
         fi
 
         cd "$PROJECT_ROOT"
