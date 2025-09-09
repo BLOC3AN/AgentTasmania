@@ -213,8 +213,10 @@ fix_frontend_package() {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@types/uuid": "^9.0.8",
+    "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.5",
+    "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.5.3"
   }
@@ -279,6 +281,77 @@ module.exports = {
   plugins: [],
 }
 EOF
+
+        # Fix layout.tsx font issue
+        if [ -f "src/app/layout.tsx" ]; then
+            print_warning "Fixing layout.tsx font issue..."
+
+            # Backup original
+            cp src/app/layout.tsx src/app/layout.tsx.backup
+
+            # Create compatible layout.tsx
+            cat > src/app/layout.tsx << 'EOF'
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "UTAS Writing Practice",
+  description: "AI-powered writing practice application",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body className="antialiased">
+        {children}
+      </body>
+    </html>
+  );
+}
+EOF
+            print_status "layout.tsx fixed (removed Geist font)"
+        fi
+
+        # Fix globals.css if it has font imports
+        if [ -f "src/app/globals.css" ]; then
+            print_warning "Fixing globals.css..."
+
+            # Create simple globals.css
+            cat > src/app/globals.css << 'EOF'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+EOF
+            print_status "globals.css fixed"
+        fi
 
         cd "$PROJECT_ROOT"
     fi
