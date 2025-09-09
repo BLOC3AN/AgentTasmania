@@ -104,11 +104,11 @@ def build_context_v1(
     if query and query.strip():
         try:
             rag_context_result = rag_context(query, user_id)
-            logger.info(f"✅ [Context Builder] RAG context prepared for query: '{query[:50]}...'")
+            logger.info(f"[Context Builder] RAG context prepared for query: '{query[:50]}...'")
         except Exception as e:
-            logger.error(f"❌ [Context Builder] Failed to prepare RAG context: {str(e)}")
+            logger.error(f"[Context Builder] Failed to prepare RAG context: {str(e)}")
             rag_context_result = ""
-            
+
     messages = [
         ("system", system_prompt),
         MessagesPlaceholder(variable_name="chat_history"),
