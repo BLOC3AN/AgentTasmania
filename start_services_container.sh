@@ -232,7 +232,7 @@ EOF
             # Backup original
             cp next.config.ts next.config.ts.backup
 
-            # Create simple next.config.js
+            # Create simple next.config.js with path alias
             cat > next.config.js << 'EOF'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -251,6 +251,46 @@ const nextConfig = {
 module.exports = nextConfig
 EOF
             print_status "next.config.js created"
+        fi
+
+        # Fix tsconfig.json for path alias
+        if [ -f "tsconfig.json" ]; then
+            print_warning "Fixing tsconfig.json for path alias..."
+
+            # Backup original
+            cp tsconfig.json tsconfig.json.backup
+
+            # Create compatible tsconfig.json
+            cat > tsconfig.json << 'EOF'
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "es6"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+EOF
+            print_status "tsconfig.json fixed with path alias"
         fi
 
         # Fix postcss config
@@ -351,6 +391,87 @@ body {
 }
 EOF
             print_status "globals.css fixed"
+        fi
+
+        # Create missing lib directory and session file
+        if [ ! -d "src/lib" ]; then
+            print_warning "Creating src/lib directory and session.ts..."
+            mkdir -p src/lib
+
+            # Create session.ts file
+            cat > src/lib/session.ts << 'EOF'
+import { NextResponse } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
+
+const SESSION_COOKIE_NAME = 'session-id';
+const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+
+export function getOrCreateSessionId(request: Request): string {
+  // Try to get session from cookie
+  const cookieHeader = request.headers.get('cookie');
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(';').map(c => c.trim());
+    const sessionCookie = cookies.find(c => c.startsWith(`${SESSION_COOKIE_NAME}=`));
+    if (sessionCookie) {
+      const sessionId = sessionCookie.split('=')[1];
+      if (sessionId && sessionId.length > 0) {
+        return sessionId;
+      }
+    }
+  }
+
+  // Create new session ID
+  return uuidv4();
+}
+
+export function createSessionResponse(sessionId: string, data?: any): NextResponse {
+  const response = NextResponse.json({
+    sessionId,
+    success: true,
+    ...data
+  });
+
+  // Set session cookie
+  response.cookies.set(SESSION_COOKIE_NAME, sessionId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: SESSION_COOKIE_MAX_AGE,
+    path: '/'
+  });
+
+  return response;
+}
+
+export function clearSessionCookie(): NextResponse {
+  const response = NextResponse.json({ success: true, message: 'Session cleared' });
+
+  response.cookies.set(SESSION_COOKIE_NAME, '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/'
+  });
+
+  return response;
+}
+
+export function getSessionIdFromRequest(request: Request): string | null {
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  const sessionCookie = cookies.find(c => c.startsWith(`${SESSION_COOKIE_NAME}=`));
+
+  if (sessionCookie) {
+    return sessionCookie.split('=')[1] || null;
+  }
+
+  return null;
+}
+EOF
+            print_status "src/lib/session.ts created"
         fi
 
         cd "$PROJECT_ROOT"
