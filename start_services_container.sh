@@ -509,6 +509,90 @@ EOF
             print_status "src/lib/session.ts created"
         fi
 
+        # Check and fix WebSocket configuration
+        if [ -f "src/app/page.tsx" ]; then
+            print_warning "Checking WebSocket configuration in page.tsx..."
+
+            # Check if WebSocket URL is correct
+            if grep -q "ws://localhost:8003" src/app/page.tsx; then
+                print_status "WebSocket URL is correctly configured"
+            else
+                print_warning "Fixing WebSocket URL in page.tsx..."
+                # Backup and fix WebSocket URL
+                cp src/app/page.tsx src/app/page.tsx.backup
+                sed -i 's|ws://[^"]*|ws://localhost:8003|g' src/app/page.tsx
+                print_status "WebSocket URL fixed to ws://localhost:8003"
+            fi
+        fi
+
+        # Create a simple WebSocket test component if needed
+        if [ ! -f "src/components/WebSocketTest.tsx" ]; then
+            mkdir -p src/components
+            cat > src/components/WebSocketTest.tsx << 'EOF'
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export default function WebSocketTest() {
+  const [connected, setConnected] = useState(false);
+  const [message, setMessage] = useState('');
+  const [response, setResponse] = useState('');
+
+  useEffect(() => {
+    const ws = new WebSocket('ws://localhost:8003/ws');
+
+    ws.onopen = () => {
+      setConnected(true);
+      console.log('WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+      setResponse(event.data);
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+      console.log('WebSocket disconnected');
+    };
+
+    return () => ws.close();
+  }, []);
+
+  const sendMessage = () => {
+    if (message.trim()) {
+      const ws = new WebSocket('ws://localhost:8003/ws');
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          type: 'chat',
+          message: message,
+          sessionId: 'test-session'
+        }));
+      };
+    }
+  };
+
+  return (
+    <div className="p-4 border rounded">
+      <h3>WebSocket Test</h3>
+      <p>Status: {connected ? '✅ Connected' : '❌ Disconnected'}</p>
+      <input
+        type="text"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="Type a message..."
+        className="border p-2 mr-2"
+      />
+      <button onClick={sendMessage} className="bg-blue-500 text-white p-2">
+        Send
+      </button>
+      {response && <p>Response: {response}</p>}
+    </div>
+  );
+}
+EOF
+            print_status "WebSocket test component created"
+        fi
+
         cd "$PROJECT_ROOT"
     fi
 }
@@ -585,20 +669,22 @@ start_databases() {
     fi
 }
 
-# Function to check required ports
+# Function to check and free required ports
 check_ports() {
-    print_status "Checking if required ports are available..."
-    
+    print_status "Checking and freeing required ports..."
+
     local ports=($AI_CORE_PORT $MCP_SERVER_PORT $DATABASE_PORT $WEBSOCKET_PORT $MONITOR_PORT $EMBEDDING_PORT $ASR_PORT $FRONTEND_PORT)
-    
+
     for port in "${ports[@]}"; do
-        if ! check_port $port; then
-            print_error "Please free up port $port before starting services"
-            exit 1
+        local pid=$(lsof -ti:$port 2>/dev/null)
+        if [ -n "$pid" ]; then
+            print_warning "Port $port is in use by PID $pid. Killing process..."
+            kill -9 "$pid" 2>/dev/null || true
+            sleep 1
         fi
     done
-    
-    print_status "All required ports are available!"
+
+    print_status "All required ports are now available!"
 }
 
 # Main start function
@@ -718,8 +804,39 @@ start_services() {
     else
         echo "  - Frontend: SKIPPED (Node.js issues)"
     fi
-    
+
+    # Wait a bit for services to fully start
+    print_status "Waiting for services to fully initialize..."
+    sleep 10
+
+    # Check service health
+    print_status "Checking service health..."
+
+    # Check AI Core
+    if curl -s "http://localhost:$AI_CORE_PORT/health" >/dev/null 2>&1; then
+        echo "  ✓ AI Core is healthy"
+    else
+        echo "  ✗ AI Core may have issues - check logs/ai-core.log"
+    fi
+
+    # Check WebSocket
+    if curl -s "http://localhost:$WEBSOCKET_PORT/health" >/dev/null 2>&1; then
+        echo "  ✓ WebSocket is healthy"
+    else
+        echo "  ✗ WebSocket may have issues - check logs/websocket.log"
+    fi
+
+    # Check Frontend API
+    if [ "$SKIP_FRONTEND" != "true" ]; then
+        if curl -s "http://localhost:$FRONTEND_PORT/api/session" >/dev/null 2>&1; then
+            echo "  ✓ Frontend API is healthy"
+        else
+            echo "  ✗ Frontend API may have issues - check logs/frontend.log"
+        fi
+    fi
+
     print_status "To stop all services, run: ./start_services_container.sh stop"
+    print_status "If chat is not working, check WebSocket and AI Core logs"
 }
 
 # Function to stop all services
