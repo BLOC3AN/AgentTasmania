@@ -161,14 +161,14 @@ check_system_deps() {
     if ! command -v postgres &> /dev/null && ! command -v pg_ctl &> /dev/null; then
         print_warning "PostgreSQL not found. Please install PostgreSQL manually."
         print_warning "On macOS: brew install postgresql"
-        print_warning "On Ubuntu: sudo apt-get install postgresql postgresql-contrib"
+        print_warning "On Ubuntu:  apt-get install postgresql postgresql-contrib"
     fi
     
     # Check if Redis is installed
     if ! command -v redis-server &> /dev/null; then
         print_warning "Redis not found. Please install Redis manually."
         print_warning "On macOS: brew install redis"
-        print_warning "On Ubuntu: sudo apt-get install redis-server"
+        print_warning "On Ubuntu:  apt-get install redis-server"
     fi
     
     print_status "System dependencies check completed!"
@@ -185,7 +185,7 @@ start_databases() {
         if [ -d "/usr/local/var/postgres" ]; then
             pg_ctl -D /usr/local/var/postgres -l "$LOG_DIR/postgres.log" start
         elif [ -d "/var/lib/postgresql/data" ]; then
-            sudo -u postgres pg_ctl -D /var/lib/postgresql/data -l "$LOG_DIR/postgres.log" start
+             -u postgres pg_ctl -D /var/lib/postgresql/data -l "$LOG_DIR/postgres.log" start
         fi
     fi
     

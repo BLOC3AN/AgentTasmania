@@ -102,35 +102,35 @@ install_ubuntu_deps() {
     print_status "Installing dependencies on Ubuntu/Debian..."
     
     # Update package list
-    sudo apt-get update
+     apt-get update
     
     # Install Python 3 and pip
     if ! command -v python3 &> /dev/null; then
         print_status "Installing Python 3..."
-        sudo apt-get install -y python3 python3-pip python3-venv
+         apt-get install -y python3 python3-pip python3-venv
     fi
     
     # Install Node.js
     if ! command -v node &> /dev/null; then
         print_status "Installing Node.js..."
-        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-        sudo apt-get install -y nodejs
+        curl -fsSL https://deb.nodesource.com/setup_18.x |  -E bash -
+         apt-get install -y nodejs
     fi
     
     # Install PostgreSQL
     if ! command -v postgres &> /dev/null; then
         print_status "Installing PostgreSQL..."
-        sudo apt-get install -y postgresql postgresql-contrib
-        sudo systemctl start postgresql
-        sudo systemctl enable postgresql
+         apt-get install -y postgresql postgresql-contrib
+         systemctl start postgresql
+         systemctl enable postgresql
     fi
     
     # Install Redis
     if ! command -v redis-server &> /dev/null; then
         print_status "Installing Redis..."
-        sudo apt-get install -y redis-server
-        sudo systemctl start redis-server
-        sudo systemctl enable redis-server
+         apt-get install -y redis-server
+         systemctl start redis-server
+         systemctl enable redis-server
     fi
     
     # Install Qdrant
@@ -140,7 +140,7 @@ install_ubuntu_deps() {
         QDRANT_VERSION="v1.7.4"
         wget "https://github.com/qdrant/qdrant/releases/download/${QDRANT_VERSION}/qdrant-x86_64-unknown-linux-gnu.tar.gz"
         tar -xzf "qdrant-x86_64-unknown-linux-gnu.tar.gz"
-        sudo mv qdrant /usr/local/bin/
+         mv qdrant /usr/local/bin/
         rm "qdrant-x86_64-unknown-linux-gnu.tar.gz"
     fi
     
@@ -152,36 +152,36 @@ install_centos_deps() {
     print_status "Installing dependencies on CentOS/RHEL..."
     
     # Update package list
-    sudo yum update -y
+     yum update -y
     
     # Install Python 3
     if ! command -v python3 &> /dev/null; then
         print_status "Installing Python 3..."
-        sudo yum install -y python3 python3-pip
+         yum install -y python3 python3-pip
     fi
     
     # Install Node.js
     if ! command -v node &> /dev/null; then
         print_status "Installing Node.js..."
-        curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
-        sudo yum install -y nodejs
+        curl -fsSL https://rpm.nodesource.com/setup_18.x |  bash -
+         yum install -y nodejs
     fi
     
     # Install PostgreSQL
     if ! command -v postgres &> /dev/null; then
         print_status "Installing PostgreSQL..."
-        sudo yum install -y postgresql-server postgresql-contrib
-        sudo postgresql-setup initdb
-        sudo systemctl start postgresql
-        sudo systemctl enable postgresql
+         yum install -y postgresql-server postgresql-contrib
+         postgresql-setup initdb
+         systemctl start postgresql
+         systemctl enable postgresql
     fi
     
     # Install Redis
     if ! command -v redis-server &> /dev/null; then
         print_status "Installing Redis..."
-        sudo yum install -y redis
-        sudo systemctl start redis
-        sudo systemctl enable redis
+         yum install -y redis
+         systemctl start redis
+         systemctl enable redis
     fi
     
     print_status "CentOS dependencies installed successfully!"
@@ -194,9 +194,9 @@ setup_postgresql() {
     # Create database and user (matching .env file)
     if command -v psql &> /dev/null; then
         # Try to create database
-        sudo -u postgres psql -c "CREATE DATABASE mydb;" 2>/dev/null || true
-        sudo -u postgres psql -c "CREATE USER admin WITH PASSWORD 'Hai@30032000';" 2>/dev/null || true
-        sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE mydb TO admin;" 2>/dev/null || true
+         -u postgres psql -c "CREATE DATABASE mydb;" 2>/dev/null || true
+         -u postgres psql -c "CREATE USER admin WITH PASSWORD 'Hai@30032000';" 2>/dev/null || true
+         -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE mydb TO admin;" 2>/dev/null || true
         
         print_status "PostgreSQL database setup completed!"
     else
