@@ -61,13 +61,38 @@ check_port() {
     return 0
 }
 
+# Function to fix Python module structure
+fix_python_modules() {
+    local service_dir=$1
+    local service_name=$2
+
+    print_status "Fixing Python modules for $service_name..."
+
+    # Create __init__.py files if missing
+    find "$service_dir" -type d -name "src" -o -name "utils" -o -name "versions" -o -name "v1" | while read dir; do
+        if [ ! -f "$dir/__init__.py" ]; then
+            touch "$dir/__init__.py"
+        fi
+    done
+
+    # Special handling for AI_core
+    if [ "$service_name" = "AI Core" ]; then
+        # Ensure all subdirectories have __init__.py
+        find "$service_dir/src" -type d | while read dir; do
+            if [ ! -f "$dir/__init__.py" ]; then
+                touch "$dir/__init__.py"
+            fi
+        done
+    fi
+}
+
 # Function to install Python dependencies
 install_python_deps() {
     local service_dir=$1
     local service_name=$2
-    
+
     print_status "Installing dependencies for $service_name..."
-    
+
     if [ -f "$service_dir/requirements.txt" ]; then
         cd "$service_dir"
         if [ ! -d "venv" ]; then
@@ -75,6 +100,11 @@ install_python_deps() {
         fi
         source venv/bin/activate
         pip install -r requirements.txt
+
+        # Fix Python modules after installing dependencies
+        cd "$PROJECT_ROOT"
+        fix_python_modules "$service_dir" "$service_name"
+
         cd "$PROJECT_ROOT"
     else
         print_warning "No requirements.txt found for $service_name"
@@ -87,26 +117,27 @@ start_python_service() {
     local service_name=$2
     local port=$3
     local main_file=$4
-    
+
     print_service "Starting $service_name on port $port..."
-    
+
     cd "$service_dir"
     source venv/bin/activate
-    
+
     # Set environment variables
     export API_PORT=$port
-    export PYTHONPATH="$service_dir:$PYTHONPATH"
-    
+    # Fix PYTHONPATH to include both service directory and current directory
+    export PYTHONPATH="$service_dir:$PWD:$PYTHONPATH"
+
     # Start service in background
     if [ "$main_file" = "server.py" ]; then
         uvicorn server:app --host 0.0.0.0 --port $port > "$LOG_DIR/$service_name.log" 2>&1 &
     else
         uvicorn main:app --host 0.0.0.0 --port $port > "$LOG_DIR/$service_name.log" 2>&1 &
     fi
-    
+
     local pid=$!
     echo "$service_name:$pid" >> "$PID_FILE"
-    
+
     cd "$PROJECT_ROOT"
     print_status "$service_name started with PID $pid"
 }
@@ -191,6 +222,63 @@ fix_frontend_package() {
 EOF
             print_status "Package.json fixed for compatibility"
         fi
+
+        # Fix Next.js config file (convert .ts to .js)
+        if [ -f "next.config.ts" ]; then
+            print_warning "Converting next.config.ts to next.config.js..."
+
+            # Backup original
+            cp next.config.ts next.config.ts.backup
+
+            # Create simple next.config.js
+            cat > next.config.js << 'EOF'
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    turbo: {
+      rules: {
+        '*.svg': {
+          loaders: ['@svgr/webpack'],
+          as: '*.js',
+        },
+      },
+    },
+  },
+}
+
+module.exports = nextConfig
+EOF
+            print_status "next.config.js created"
+        fi
+
+        # Fix postcss config
+        if [ -f "postcss.config.mjs" ]; then
+            print_warning "Converting postcss.config.mjs to postcss.config.js..."
+            cat > postcss.config.js << 'EOF'
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+EOF
+        fi
+
+        # Create simple tailwind config
+        cat > tailwind.config.js << 'EOF'
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+EOF
 
         cd "$PROJECT_ROOT"
     fi
