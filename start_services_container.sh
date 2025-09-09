@@ -876,19 +876,121 @@ stop_services() {
 # Function to show service status
 show_status() {
     print_status "Service Status:"
-    
+
     local ports=($AI_CORE_PORT $MCP_SERVER_PORT $DATABASE_PORT $WEBSOCKET_PORT $MONITOR_PORT $EMBEDDING_PORT $ASR_PORT $FRONTEND_PORT)
     local names=("AI Core" "MCP Server" "Database" "WebSocket" "Monitor" "Embedding" "ASR" "Frontend")
-    
+
     for i in "${!ports[@]}"; do
         local port=${ports[$i]}
         local name=${names[$i]}
         local pid=$(lsof -ti:$port 2>/dev/null)
-        
+
         if [ -n "$pid" ]; then
             echo -e "  ${GREEN}✓${NC} $name (Port $port) - PID: $pid"
         else
             echo -e "  ${RED}✗${NC} $name (Port $port) - Not running"
+        fi
+    done
+}
+
+# Function to show logs
+show_logs() {
+    local service=$1
+
+    if [ -z "$service" ]; then
+        print_status "Available logs:"
+        echo "  - all: Show all logs in real-time"
+        echo "  - ai-core: AI Core service logs"
+        echo "  - mcp-server: MCP Server logs"
+        echo "  - database: Database service logs"
+        echo "  - websocket: WebSocket service logs"
+        echo "  - monitor: Monitor service logs"
+        echo "  - embedding: Embedding service logs"
+        echo "  - asr: ASR service logs"
+        echo "  - frontend: Frontend service logs"
+        echo ""
+        echo "Usage: $0 logs <service_name>"
+        echo "Example: $0 logs ai-core"
+        echo "Example: $0 logs all"
+        return
+    fi
+
+    case "$service" in
+        all)
+            print_status "Showing all logs (Press Ctrl+C to exit)..."
+            if command -v multitail &> /dev/null; then
+                multitail -i "$LOG_DIR/ai-core.log" -i "$LOG_DIR/mcp-server.log" -i "$LOG_DIR/database.log" -i "$LOG_DIR/websocket.log" -i "$LOG_DIR/embedding.log" -i "$LOG_DIR/asr.log" -i "$LOG_DIR/frontend.log" -i "$LOG_DIR/monitor.log"
+            else
+                # Fallback to tail with labels
+                print_warning "multitail not available. Using tail -f with labels..."
+                tail -f "$LOG_DIR"/*.log | while read line; do
+                    echo "$(date '+%H:%M:%S') $line"
+                done
+            fi
+            ;;
+        ai-core|ai_core|aicore)
+            print_status "Showing AI Core logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/ai-core.log"
+            ;;
+        mcp-server|mcp_server|mcp)
+            print_status "Showing MCP Server logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/mcp-server.log"
+            ;;
+        database|db)
+            print_status "Showing Database logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/database.log"
+            ;;
+        websocket|ws)
+            print_status "Showing WebSocket logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/websocket.log"
+            ;;
+        monitor)
+            print_status "Showing Monitor logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/monitor.log"
+            ;;
+        embedding|embed)
+            print_status "Showing Embedding logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/embedding.log"
+            ;;
+        asr)
+            print_status "Showing ASR logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/asr.log"
+            ;;
+        frontend|fe)
+            print_status "Showing Frontend logs (Press Ctrl+C to exit)..."
+            tail -f "$LOG_DIR/frontend.log"
+            ;;
+        *)
+            print_error "Unknown service: $service"
+            show_logs
+            ;;
+    esac
+}
+
+# Function to show recent logs summary
+show_logs_summary() {
+    print_status "Recent logs summary (last 10 lines each):"
+
+    local services=("ai-core" "mcp-server" "database" "websocket" "monitor" "embedding" "asr" "frontend")
+
+    for service in "${services[@]}"; do
+        local log_file="$LOG_DIR/$service.log"
+        if [ -f "$log_file" ]; then
+            echo ""
+            echo -e "${BLUE}=== $service ===${NC}"
+            tail -n 10 "$log_file" | while read line; do
+                if echo "$line" | grep -qi "error\|exception\|failed\|traceback"; then
+                    echo -e "${RED}$line${NC}"
+                elif echo "$line" | grep -qi "warning\|warn"; then
+                    echo -e "${YELLOW}$line${NC}"
+                elif echo "$line" | grep -qi "info\|started\|ready\|success"; then
+                    echo -e "${GREEN}$line${NC}"
+                else
+                    echo "$line"
+                fi
+            done
+        else
+            echo -e "${RED}=== $service === (No log file)${NC}"
         fi
     done
 }
@@ -909,12 +1011,27 @@ case "${1:-start}" in
     status)
         show_status
         ;;
+    logs)
+        show_logs "$2"
+        ;;
+    summary)
+        show_logs_summary
+        ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status}"
+        echo "Usage: $0 {start|stop|restart|status|logs|summary}"
         echo "  start   - Start all services (default)"
         echo "  stop    - Stop all services"
         echo "  restart - Restart all services"
         echo "  status  - Show service status"
+        echo "  logs    - Show logs for specific service or all"
+        echo "  summary - Show recent logs summary with colors"
+        echo ""
+        echo "Log examples:"
+        echo "  $0 logs all        - Show all logs in real-time"
+        echo "  $0 logs ai-core    - Show AI Core logs"
+        echo "  $0 logs websocket  - Show WebSocket logs"
+        echo "  $0 logs frontend   - Show Frontend logs"
+        echo "  $0 summary         - Show recent logs summary"
         exit 1
         ;;
 esac
