@@ -267,19 +267,23 @@ EOF
             # Backup original
             cp next.config.ts next.config.ts.backup
 
-            # Create simple next.config.js with path alias
+            # Create simple next.config.js with proper ES module support
             cat > next.config.js << 'EOF'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
   experimental: {
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
-      },
-    },
+    appDir: true,
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      };
+    }
+    return config;
   },
 }
 
@@ -288,21 +292,28 @@ EOF
             print_status "next.config.js created"
         fi
 
-        # Fix tsconfig.json for path alias
+        # Clear Next.js cache first
+        print_warning "Clearing Next.js cache..."
+        rm -rf .next 2>/dev/null || true
+        rm -rf node_modules/.cache 2>/dev/null || true
+
+        # Fix tsconfig.json for proper module support
         if [ -f "tsconfig.json" ]; then
-            print_warning "Fixing tsconfig.json for path alias..."
+            print_warning "Fixing tsconfig.json for ES modules..."
 
             # Backup original
             cp tsconfig.json tsconfig.json.backup
 
-            # Create compatible tsconfig.json
+            # Create compatible tsconfig.json with proper module settings
             cat > tsconfig.json << 'EOF'
 {
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "es6"],
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
@@ -325,7 +336,7 @@ EOF
   "exclude": ["node_modules"]
 }
 EOF
-            print_status "tsconfig.json fixed with path alias"
+            print_status "tsconfig.json fixed for ES modules"
         fi
 
         # Fix postcss config
