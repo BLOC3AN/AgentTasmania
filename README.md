@@ -44,6 +44,13 @@ AgentTasmania/
 │   ├── main.py
 │   ├── requirements.txt
 │   └── Dockerfile
+├── ASR_service/                # ASR Service (Port 8006)
+│   ├── main.py                # FastAPI ASR service
+│   ├── export_onnx.py         # Model export script
+│   ├── nginx.conf             # Load balancer config
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── README.md
 ├── frontend_service/           # Next.js Frontend (Port 3000)
 │   ├── src/
 │   │   ├── app/               # Next.js App Router
@@ -98,6 +105,7 @@ chmod +x deploy.sh
 - **WebSocket**: ws://localhost:8003 (Real-time Chat with Agent Routing)
 - **Monitor**: http://localhost:8004 (System Health Dashboard)
 - **Embedding**: http://localhost:8005 (Text Embedding Service)
+- **ASR**: http://localhost:8006 (Automatic Speech Recognition with Load Balancing)
 - **Logs**: http://localhost:5555 (Dozzle Log Viewer)
 
 ### Development Mode

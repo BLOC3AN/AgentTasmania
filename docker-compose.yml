@@ -211,6 +211,26 @@ services:
       - agent-network
     restart: unless-stopped
 
+  # ASR WebSocket Service
+  asr:
+    build:
+      context: ./ASR_service
+      dockerfile: Dockerfile
+    container_name: asr-service
+    environment:
+      - API_PORT=8006
+    ports:
+      - "8006:8006"
+    networks:
+      - agent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 
 networks:
   agent-network:
