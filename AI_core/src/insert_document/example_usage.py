@@ -13,26 +13,22 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from docx_data_processor import DocxDataProcessor
 
+services = {
+    "embed_service_url": "http://localhost:8005",
+    "database_service_url": "http://localhost:8002"
+}
+
 
 def check_services():
     """Kiểm tra các service có hoạt động không"""
     import requests
-
-    # services = {
-    #     "Embedding Service": "http://13.210.111.152:8005/health",
-    #     "Database Service": "http://13.210.111.152:8002/health"
-    # }
-    services = {
-        "Embedding Service": "http://localhost:8005/health",
-        "Database Service": "http://localhost:8002/health"
-    }
-
+    
     print("🔍 Checking services...")
     all_ok = True
 
     for name, url in services.items():
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url+"/health", timeout=5)
             if response.status_code == 200:
                 print(f"✅ {name}: OK")
             else:
@@ -47,20 +43,12 @@ def check_services():
 
 def process_module6_file_with_services():
     """Xử lý file Module 6 S2 2025.docx với embedding và database services"""
-    print("� Processing Module 6 S2 2025.docx with Services")
+    print("Processing Module 6 S2 2025.docx with Services")
     print("="*60)
 
-    # Initialize processor với services
-    # processor = DocxDataProcessor(
-    #     embed_service_url="http://13.210.111.152:8005",
-    #     database_service_url="http://13.210.111.152:8002",
-    #     chunk_size=700,
-    #     chunk_overlap=10
-    # )
-
     processor = DocxDataProcessor(
-        embed_service_url="http://localhost:8005",
-        database_service_url="http://localhost:8002",
+        embed_service_url=services["embed_service_url"],
+        database_service_url=services["database_service_url"],
         chunk_size=500,
         chunk_overlap=100
     )
@@ -203,7 +191,7 @@ def process_module6_file_with_service():
 
 def main():
     """Main function"""
-    print("� Module 6 S2 2025 Document Processor")
+    print("Module 6 S2 2025 Document Processor")
     print("="*60)
 
     # Check if services are running
