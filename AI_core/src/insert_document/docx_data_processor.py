@@ -183,21 +183,15 @@ class DocxDataProcessor:
     # Sparse vectors now created by embedding service via /embed-hybrid
 
     def build_bm25_corpus(self, texts: List[str]):
-        """Build BM25 corpus từ danh sách texts"""
-        if not self.enable_bm25 or not self.bm25_encoder:
-            return
-
-        try:
-            logger.info(f"🔍 Building BM25 corpus from {len(texts)} texts...")
-            self.bm25_encoder.build_corpus_statistics(texts)
-            logger.info("✅ BM25 corpus built successfully")
-        except Exception as e:
-            logger.error(f"❌ Lỗi build BM25 corpus: {e}")
+        """Build BM25 corpus - now handled by embedding service, this is a no-op"""
+        # BM25 corpus building is now handled by the centralized embedding service
+        # This method is kept for backward compatibility but does nothing
+        logger.info(f"🔍 BM25 corpus building skipped - handled by embedding service")
 
     def create_payload(self, chunk: str, metadata: Dict[str, str], chunk_id: int) -> Dict[str, Any]:
         """Tạo payload theo format chuẩn với hybrid vectors"""
         payload = {
-            "id": str(uuid.uuid4()),
+            "id": str(uuid.uuid4()),  # UUID format for Qdrant compatibility
             "vector": None,  # Dense vector - sẽ được set sau khi embed
             "payload": {
                 "content": chunk,
@@ -209,11 +203,8 @@ class DocxDataProcessor:
             }
         }
 
-        # Add sparse vector if BM25 enabled
-        if self.enable_bm25:
-            sparse_vector = self.create_sparse_vector(chunk)
-            if sparse_vector:
-                payload["sparse_vector"] = sparse_vector
+        # Note: Sparse vectors are now created by embedding service via /embed-hybrid
+        # No need to create them locally anymore
 
         return payload
     
@@ -231,9 +222,19 @@ class DocxDataProcessor:
             if payload.get("vector"):
                 point["vector"]["dense_vector"] = payload["vector"]
 
-            # Add sparse vector if available
+            # Add sparse vector if available (convert to Qdrant format)
             if payload.get("sparse_vector"):
-                point["vector"]["bm25_sparse_vector"] = payload["sparse_vector"]
+                sparse_vector = payload["sparse_vector"]
+                # Convert to Qdrant sparse vector format: {"indices": [...], "values": [...]}
+                if isinstance(sparse_vector, dict):
+                    indices = [int(k) for k in sparse_vector.keys()]
+                    values = list(sparse_vector.values())
+                    point["vector"]["bm25_sparse_vector"] = {
+                        "indices": indices,
+                        "values": values
+                    }
+                else:
+                    point["vector"]["bm25_sparse_vector"] = sparse_vector
 
             request_data = {"points": [point]}
 
@@ -414,12 +415,9 @@ def main():
         for key, value in stats.items():
             print(f"  {key}: {value}")
 
-        # Show BM25 corpus info if available
-        if processor.enable_bm25 and processor.bm25_encoder and processor.bm25_encoder.corpus_stats_ready:
-            corpus_info = processor.bm25_encoder.get_corpus_info()
-            print(f"\n🔍 BM25 Corpus Info:")
-            for key, value in corpus_info.items():
-                print(f"  {key}: {value}")
+        # BM25 info now handled by embedding service
+        if processor.enable_bm25:
+            print(f"\n🔍 BM25 Status: Enabled (handled by embedding service)")
 
     except Exception as e:
         print(f"❌ Error: {e}")

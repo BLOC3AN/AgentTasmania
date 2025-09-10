@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 class HybridModelManager:
     """Manager for both dense and sparse embedding models."""
     
-    def __init__(self, 
-                 dense_model_name: str = "sentence-transformers/distiluse-base-multilingual-cased-v1",
+    def __init__(self,
+                 dense_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
                  sparse_model_name: str = "Qdrant/bm25"):
         self.dense_model_name = dense_model_name
         self.sparse_model_name = sparse_model_name

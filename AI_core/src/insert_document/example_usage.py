@@ -61,8 +61,8 @@ def process_module6_file_with_services():
     processor = DocxDataProcessor(
         embed_service_url="http://localhost:8005",
         database_service_url="http://localhost:8002",
-        chunk_size=700,
-        chunk_overlap=10
+        chunk_size=500,
+        chunk_overlap=100
     )
     # File path
     file_path = "./data/Module 6 S2 2025.docx"
@@ -101,9 +101,9 @@ def process_module6_file_with_services():
     return result
 
 
-def process_module6_file_offline():
-    """Xử lý file Module 6 S2 2025.docx offline (không dùng services)"""
-    print("🔌 Processing Module 6 S2 2025.docx (Offline Mode)")
+def process_module6_file_with_service():
+    """Xử lý file Module 6 S2 2025.docx với embedding service (REQUIRED)"""
+    print("🔌 Processing Module 6 S2 2025.docx (Service Mode)")
     print("="*60)
 
     # Initialize processor
@@ -120,7 +120,7 @@ def process_module6_file_offline():
         return
 
     try:
-        print(f"� Loading file: {file_path}")
+        print(f"Loading file: {file_path}")
         start_time = time.time()
 
         # 1. Load content
@@ -139,28 +139,37 @@ def process_module6_file_offline():
         chunks = processor.chunk_text(cleaned)
         print(f"✅ Chunks: {len(chunks)} pieces")
 
-        # 5. Build BM25 corpus if enabled
+        # 5. BM25 is now handled by embedding service
         if processor.enable_bm25:
-            print(f"🔍 Building BM25 corpus for sparse vectors...")
-            processor.build_bm25_corpus(chunks)
-            if processor.bm25_encoder and processor.bm25_encoder.corpus_stats_ready:
-                corpus_info = processor.bm25_encoder.get_corpus_info()
-                print(f"✅ BM25 corpus built: {corpus_info['vocabulary_size']} terms")
+            print(f"🔍 BM25 sparse vectors handled by embedding service")
+        else:
+            print(f"🔍 BM25 disabled - dense vectors only")
 
         # 6. Show sample chunks
         print(f"\nSample chunks:")
         for i, chunk in enumerate(chunks[:3]):
             print(f"  Chunk {i+1} ({len(chunk)} chars): {chunk[:100]}...")
 
-        # 7. Create sample payloads
-        print(f"\nCreating payloads:")
+        # 7. Create sample payloads with REAL embeddings from service
+        print(f"\nCreating payloads with real embeddings:")
         payloads = []
         for i, chunk in enumerate(chunks):
             payload = processor.create_payload(chunk, metadata, i)
-            payload["vector"] = [0.1] * 512  # Dummy vector for demo
+
+            # Get REAL hybrid embedding from service (not dummy data)
+            hybrid_result = processor.embed_text_hybrid(chunk)
+            if hybrid_result:
+                payload["vector"] = hybrid_result["dense_vector"]
+                if hybrid_result["sparse_terms"] > 0:
+                    payload["sparse_vector"] = hybrid_result["sparse_vector"]
+                print(f"  ✅ Chunk {i+1}: Got real embedding ({hybrid_result['dense_dimension']} dims)")
+            else:
+                print(f"  ❌ Chunk {i+1}: Failed to get embedding from service")
+                continue
+
             payloads.append(payload)
 
-        print(f"✅ Created {len(payloads)} payloads")
+        print(f"✅ Created {len(payloads)} payloads with real embeddings")
 
         # 8. Show processing stats
         end_time = time.time()
@@ -216,17 +225,9 @@ def main():
 
     else:
         print("\n⚠️ Services are not running!")
-        print("💡 Start services with: docker-compose up embedding_service database_service")
-        print("🔌 Running offline mode...")
-
-        # Process offline
-        payloads = process_module6_file_offline()
-
-        if payloads:
-            print(f"\n✅ Offline processing completed successfully!")
-            print(f"� Generated {len(payloads)} payloads ready for embedding/storage")
-        else:
-            print(f"\n❌ Offline processing failed!")
+        print("💡 Start services with: docker-compose up embedding vectordb qdrant")
+        print("❌ Cannot process without embedding service - all embeddings must go through service!")
+        print("🚫 Offline mode removed - embedding service is required")
 
 
 if __name__ == "__main__":
