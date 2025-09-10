@@ -1,0 +1,21 @@
+# Mic Service Dependencies
+# Core web framework
+streamlit==1.28.1
+
+# Audio processing
+pyaudio==0.2.11
+soundfile==0.12.1
+
+# HTTP requests
+requests==2.31.0
+
+# Scientific computing
+numpy<2
+torch==2.1.2
+torchaudio==2.1.2
+
+# Voice Activity Detection
+silero-vad==6.0.0
+
+# System utilities
+python-multipart==0.0.6
