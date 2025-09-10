@@ -29,12 +29,12 @@ class VectorDocument:
     week: str     # The number of week like week1, week2, week3, etc
     chunk_id: str # The id of chunk content in source
     timestamp: Optional[str] = None  # The time create
-    vector_size: int = 512
+    vector_size: int = 384
 
     def __post_init__(self):
         """Post-initialization to set default values."""
         if self.vector_size is None:
-            self.vector_size = 512
+            self.vector_size = 384
 
         if self.timestamp is None:
             self.timestamp = datetime.now(timezone.utc).isoformat()
@@ -71,7 +71,7 @@ class QdrantConfig:
                  api_key: str = None,
                  url: str = None,
                  collection_name: str = None,
-                 vector_size: int = 512):
+                 vector_size: int = 384):
         """
         Initialize Qdrant configuration.
         Supports both local Qdrant (Docker) and Qdrant Cloud.
@@ -189,7 +189,7 @@ class QdrantConfig:
         
         Args:
             document: VectorDocument to store
-            dense_vector: Dense embedding vector (1024 dimensions)
+            dense_vector: Dense embedding vector (384 dimensions)
             sparse_vector: Optional sparse vector for BM25
             
         Returns:

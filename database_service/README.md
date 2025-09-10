@@ -197,7 +197,7 @@ doc = create_vector_document(
 )
 
 # Store document with dense + sparse vectors
-dense_vector = [0.1, 0.2, 0.3, ...]  # Your embedding vector
+dense_vector = [0.1, 0.2, 0.3, ...]  # Your 384-dim embedding vector
 sparse_vector = {"indices": [1, 5, 10], "values": [0.8, 0.6, 0.4]}  # BM25 sparse vector
 
 success = qdrant.upsert_document(doc, dense_vector, sparse_vector)
@@ -249,7 +249,7 @@ The service now creates collections with both dense and sparse vector support:
 ```python
 # Collection configuration
 vectors_config = {
-    "dense_vector": VectorParams(size=1024, distance=Distance.COSINE)
+    "dense_vector": VectorParams(size=384, distance=Distance.COSINE)
 }
 sparse_vectors_config = {
     "bm25_sparse_vector": SparseVectorParams(modifier=Modifier.IDF)

@@ -9,3 +9,4 @@ langchain-google-genai==1.0.10
 pymongo==4.6.0
 redis==5.0.1
 weaviate-client==4.9.3
+fastembed==0.3.6

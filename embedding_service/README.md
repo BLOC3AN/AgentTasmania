@@ -73,10 +73,10 @@ Response:
 
 ## Model Details
 
-- **Model**: sentence-transformers/distiluse-base-multilingual-cased-v1
-- **Dimension**: 512
-- **Languages**: Multilingual (15+ languages)
-- **Max Sequence Length**: 512 tokens
+- **Model**: sentence-transformers/all-MiniLM-L6-v2
+- **Dimension**: 384
+- **Languages**: Multilingual (100+ languages)
+- **Max Sequence Length**: 256 tokens
 
 ## Environment Variables
 

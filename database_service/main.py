@@ -1,6 +1,7 @@
 import os
 import sys
 from contextlib import asynccontextmanager
+from typing import List, Dict, Optional, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from src.models.schemas_vectordb import (
     UpsertPointsRequest, UpsertPointsResponse,
     DeletePointsRequest, DeletePointsResponse,
     HybridSearchRequest, HybridSearchResponse,
+    HybridSearchWithVectorsRequest,
     HealthResponse
 )
 from src.utils.logger import Logger
@@ -270,6 +272,148 @@ async def hybrid_search(request: HybridSearchRequest):
     except Exception as e:
         logger.log_exception("hybrid_search", e)
         raise HTTPException(status_code=500, detail="Hybrid search failed")
+
+@app.post("/hybrid-search-with-vectors", response_model=HybridSearchResponse)
+async def hybrid_search_with_vectors(request: HybridSearchWithVectorsRequest):
+    """
+    Hybrid search with pre-computed vectors from embedding_service.
+    This endpoint receives both dense and sparse vectors, no embedding computation needed.
+    """
+    try:
+        if not qdrant_config:
+            raise HTTPException(status_code=503, detail="Qdrant not initialized")
+
+        # Determine search type based on sparse vector
+        has_sparse = bool(request.sparse_vector)
+        search_type = "hybrid" if has_sparse else "dense_only"
+
+        logger.info(f"🔍 Hybrid search with vectors: {search_type}")
+        logger.info(f"📊 Dense vector: {len(request.dense_vector)} dims")
+        if has_sparse:
+            logger.info(f"📊 Sparse vector: {len(request.sparse_vector)} terms")
+
+        if has_sparse:
+            # Perform hybrid search with both vectors
+            results = await _perform_hybrid_search_with_vectors(
+                dense_vector=request.dense_vector,
+                sparse_vector=request.sparse_vector,
+                qdrant_config=qdrant_config,
+                limit=request.limit,
+                score_threshold=request.score_threshold,
+                subject=request.subject,
+                title=request.title,
+                week=request.week
+            )
+        else:
+            # Fallback to dense-only search
+            logger.info("⚠️ No sparse vector provided, performing dense-only search")
+            results = qdrant_config.search_similar(
+                query_vector=request.dense_vector,
+                limit=request.limit,
+                score_threshold=request.score_threshold
+            )
+
+            # Format results for consistency
+            formatted_results = []
+            for result in results:
+                formatted_results.append({
+                    "id": result["id"],
+                    "score": result["score"],
+                    "payload": result["document"].to_payload()
+                })
+
+            results = {
+                "results": formatted_results,
+                "total_found": len(formatted_results),
+                "search_type": "dense_only"
+            }
+
+        return HybridSearchResponse(
+            results=results["results"],
+            total_found=results["total_found"],
+            search_type=results["search_type"]
+        )
+
+    except Exception as e:
+        logger.log_exception("hybrid_search_with_vectors", e)
+        raise HTTPException(status_code=500, detail="Hybrid search with vectors failed")
+
+async def _perform_hybrid_search_with_vectors(
+    dense_vector: List[float],
+    sparse_vector: Dict[int, float],
+    qdrant_config,
+    limit: int = 5,
+    score_threshold: float = 0.5,
+    subject: Optional[str] = None,
+    title: Optional[str] = None,
+    week: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Perform hybrid search using pre-computed vectors.
+    This is a simplified version without the embedding computation.
+    """
+    try:
+        from qdrant_client.models import Prefetch, FusionQuery, Fusion, Filter, FieldCondition, MatchValue
+
+        # Build filter conditions
+        filter_conditions = []
+        if subject:
+            filter_conditions.append(FieldCondition(key="subject", match=MatchValue(value=subject)))
+        if title:
+            filter_conditions.append(FieldCondition(key="title", match=MatchValue(value=title)))
+        if week:
+            filter_conditions.append(FieldCondition(key="week", match=MatchValue(value=week)))
+
+        filter_obj = Filter(must=filter_conditions) if filter_conditions else None
+
+        # Convert sparse vector to Qdrant format
+        sparse_indices = list(sparse_vector.keys())
+        sparse_values = list(sparse_vector.values())
+
+        # Use Qdrant's Query API with RRF (Reciprocal Rank Fusion)
+        search_result = qdrant_config.client.query_points(
+            collection_name=qdrant_config.collection_name,
+            prefetch=[
+                Prefetch(
+                    query={"indices": sparse_indices, "values": sparse_values},
+                    using="bm25_sparse_vector",
+                    limit=limit * 2,  # Get more candidates for RRF
+                    filter=filter_obj
+                ),
+                Prefetch(
+                    query=dense_vector,
+                    using="dense_vector",
+                    limit=limit * 2,  # Get more candidates for RRF
+                    filter=filter_obj
+                )
+            ],
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=limit,
+            with_payload=True,
+            with_vectors=False
+        )
+
+        # Format results
+        formatted_results = []
+        for point in search_result.points:
+            if point.score >= score_threshold:
+                formatted_results.append({
+                    "id": str(point.id),
+                    "score": point.score,
+                    "payload": point.payload
+                })
+
+        logger.info(f"✅ Hybrid search completed: {len(formatted_results)} results")
+
+        return {
+            "results": formatted_results,
+            "total_found": len(formatted_results),
+            "search_type": "hybrid"
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Hybrid search with vectors failed: {e}")
+        raise
 
 if __name__ == "__main__":
     import uvicorn

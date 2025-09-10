@@ -165,7 +165,7 @@ Document Upload → PostgreSQL (metadata) → Text Processing → Embedding → 
 collection_config = {
     "vectors": {
         "dense_vector": {
-            "size": 512,  # hoặc 384, 1024 tùy embedding model
+            "size": 384,  # all-MiniLM-L6-v2 model dimension
             "distance": "Cosine"
         }
     },

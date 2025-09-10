@@ -43,12 +43,15 @@ class TestDocxDataProcessor(unittest.TestCase):
         Learning outcomes include effective communication and source evaluation.
         """
         
-        # Mock responses
-        self.mock_embedding = [0.1, 0.2, 0.3] * 170 + [0.4, 0.5]  # 512 dimensions
-        self.mock_embed_response = {
+        # Mock responses for new hybrid system
+        self.mock_dense_embedding = [0.1, 0.2, 0.3] * 128  # 384 dimensions
+        self.mock_sparse_vector = {"316307400": 1.6786885245901642, "74040069": 1.6786885245901642}
+        self.mock_hybrid_response = {
             "text": "sample text",
-            "embedding": self.mock_embedding,
-            "dimension": 512
+            "dense_vector": self.mock_dense_embedding,
+            "sparse_vector": self.mock_sparse_vector,
+            "dense_dimension": 384,
+            "sparse_terms": 2
         }
         
         self.mock_upsert_response = {
@@ -110,32 +113,35 @@ class TestDocxDataProcessor(unittest.TestCase):
         self.assertEqual(len(empty_chunks), 1)  # Fallback behavior
     
     @patch('requests.post')
-    def test_embed_text(self, mock_post):
-        """Test text embedding via API"""
+    def test_embed_text_hybrid(self, mock_post):
+        """Test hybrid text embedding via API"""
         # Mock successful response
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = self.mock_embed_response
+        mock_response.json.return_value = self.mock_hybrid_response
         mock_post.return_value = mock_response
-        
-        embedding = self.processor.embed_text("test text")
-        
+
+        result = self.processor.embed_text_hybrid("test text")
+
         # Check API call
         mock_post.assert_called_once_with(
-            "http://localhost:8005/embed",
+            "http://localhost:8005/embed-hybrid",
             json={"text": "test text"},
             timeout=30
         )
-        
+
         # Check result
-        self.assertEqual(embedding, self.mock_embedding)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["dense_vector"], self.mock_dense_embedding)
+        self.assertEqual(result["sparse_vector"], self.mock_sparse_vector)
+        self.assertEqual(result["dense_dimension"], 384)
         self.assertEqual(self.processor.stats["successful_embeddings"], 1)
-        
+
         # Test API failure
         mock_post.side_effect = Exception("API Error")
-        embedding_fail = self.processor.embed_text("test text")
-        
-        self.assertIsNone(embedding_fail)
+        result_fail = self.processor.embed_text_hybrid("test text")
+
+        self.assertIsNone(result_fail)
         self.assertEqual(self.processor.stats["failed_embeddings"], 1)
     
     def test_create_payload(self):
@@ -168,36 +174,33 @@ class TestDocxDataProcessor(unittest.TestCase):
         self.assertIsInstance(uuid.UUID(payload["id"]), uuid.UUID)
 
     def test_bm25_functionality(self):
-        """Test BM25 sparse vector functionality"""
-        # Test BM25 encoder
+        """Test BM25 sparse vector functionality (now handled by embedding service)"""
+        # BM25 is now handled by embedding service, so we test the integration
         self.assertTrue(self.processor.enable_bm25)
-        self.assertIsNotNone(self.processor.bm25_encoder)
 
-        # Test corpus building
+        # Note: BM25 encoder is no longer local, it's handled by embedding service
+        # The processor should still track BM25 as enabled for backward compatibility
+
+        # Test that BM25 is enabled in stats
+        stats = self.processor.get_stats()
+        self.assertTrue(stats["bm25_enabled"])
+
+        # Test corpus building (now a no-op since BM25 is centralized)
         test_docs = [
             "This is a test document about machine learning",
             "Another document discussing artificial intelligence",
             "A third document about natural language processing"
         ]
 
-        self.processor.build_bm25_corpus(test_docs)
-        if self.processor.bm25_encoder:
-            self.assertTrue(self.processor.bm25_encoder.corpus_stats_ready)
+        # This should not fail even though BM25 is now centralized
+        try:
+            self.processor.build_bm25_corpus(test_docs)
+            # Should complete without error
+        except Exception as e:
+            self.fail(f"build_bm25_corpus should not fail: {e}")
 
-            # Test sparse vector creation
-            sparse_vector = self.processor.create_sparse_vector("machine learning test")
-            self.assertIsNotNone(sparse_vector)
-            if sparse_vector:
-                self.assertIn("indices", sparse_vector)
-                self.assertIn("values", sparse_vector)
-                self.assertIsInstance(sparse_vector["indices"], list)
-                self.assertIsInstance(sparse_vector["values"], list)
-
-            # Test corpus info
-            corpus_info = self.processor.bm25_encoder.get_corpus_info()
-            self.assertEqual(corpus_info["corpus_size"], 3)
-            self.assertTrue(corpus_info["stats_ready"])
-            self.assertGreater(corpus_info["vocabulary_size"], 0)
+        # Note: Sparse vector creation is now done by embedding service via /embed-hybrid
+        # No longer testing local sparse vector creation
     
     @patch('requests.post')
     def test_upsert_document(self, mock_post):
@@ -210,16 +213,17 @@ class TestDocxDataProcessor(unittest.TestCase):
         
         payload = {
             "id": "test-id",
-            "vector": self.mock_embedding,
+            "vector": self.mock_dense_embedding,  # Dense vector as array
+            "sparse_vector": self.mock_sparse_vector,  # Sparse vector separate
             "payload": {"content": "test"}
         }
-        
+
         success = self.processor.upsert_document(payload)
-        
+
         # Check API call - expect hybrid vector format
         expected_point = {
             "id": "test-id",
-            "vector": {"dense_vector": self.mock_embedding},
+            "vector": {"dense_vector": self.mock_dense_embedding, "bm25_sparse_vector": self.mock_sparse_vector},
             "payload": {"content": "test"}
         }
         mock_post.assert_called_once_with(

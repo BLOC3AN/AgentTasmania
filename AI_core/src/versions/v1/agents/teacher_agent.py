@@ -91,7 +91,6 @@ class TaskerAgent:
             before_invoke = time.time()
             logger.info(f"⏱️ Time to create agent: {before_invoke - start_time:.4f} seconds")
 
-            logger.info(f"\nPROMTP: \n{prompt}\n")
             agent = create_tool_calling_agent(self.llm_model_instance.llm, self.tools,prompt)
             agent_executor = AgentExecutor(
                 agent=agent,
@@ -111,9 +110,31 @@ class TaskerAgent:
 
             # Save conversation to Redis memory
             try:
+                # Format tools_used information with details
+                tools_info = result.get("intermediate_steps", [])
+                tools_summary = ""
+                if tools_info:
+                    tool_details = []
+                    for step in tools_info:
+                        if hasattr(step, '__len__') and len(step) >= 1:
+                            action = step[0]
+                            if hasattr(action, 'tool') and hasattr(action, 'tool_input'):
+                                tool_name = action.tool
+                                tool_query = action.tool_input
+                                # Format tool info nicely
+                                tool_details.append(f"Tools used: {tool_name}\nquery: {tool_query}")
+
+                    if tool_details:
+                        tools_summary = "\n\nAssistant: " + "\n".join(tool_details)
+
+                # Combine output with tools info for memory
+                output_with_tools = result.get("output", "")
+                if tools_summary:
+                    output_with_tools += tools_summary
+
                 memory.save_context(
                     {"input": user_query},
-                    {"output": result.get("output", "")}
+                    {"output": output_with_tools}
                 )
             except Exception as e:
                 logger.error(f"Error saving conversation to Redis: {str(e)}")

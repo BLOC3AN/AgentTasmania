@@ -11,15 +11,21 @@ class KnowledgeBase:
     Flow: query → RAG → enhance context → prompt → agent
     """
 
-    def __init__(self, database_service_url: str = None):
+    def __init__(self,
+                 database_service_url: str = None,
+                 embedding_service_url: str = None):
         """
-        Initialize KnowledgeBase with database service URL.
+        Initialize KnowledgeBase with service URLs.
 
         Args:
             database_service_url: URL of the database service (default from env)
+            embedding_service_url: URL of the embedding service (default from env)
         """
         self.database_service_url = database_service_url or os.getenv("DATABASE_URL", "http://vectordb:8002")
-        logger.info(f"✅ KnowledgeBase initialized with database service: {self.database_service_url}")
+        self.embedding_service_url = embedding_service_url or os.getenv("EMBEDDING_SERVICE_URL", "http://embedding:8005")
+        logger.info(f"✅ KnowledgeBase initialized:")
+        logger.info(f"   📊 Database service: {self.database_service_url}")
+        logger.info(f"   🧠 Embedding service: {self.embedding_service_url}")
 
     def search(self,
                query: str,
@@ -27,7 +33,9 @@ class KnowledgeBase:
                score_threshold: float = 0.5,
                user_id: str = None) -> dict:
         """
-        Search knowledge base using hybrid search.
+        Search knowledge base using new hybrid flow:
+        1. Get vectors from embedding_service/embed-hybrid
+        2. Search with vectors via database_service/hybrid-search-with-vectors
 
         Args:
             query: Search query text
@@ -39,23 +47,78 @@ class KnowledgeBase:
             dict: Search results with metadata
         """
         try:
-            logger.info(f"🔍 [KnowledgeBase] Hybrid search query: '{query}' (limit={limit}, threshold={score_threshold})")
+            logger.info(f"🔍 [KnowledgeBase] New hybrid search query: '{query}' (limit={limit}, threshold={score_threshold})")
 
-            # Prepare request payload
+            # Step 1: Get hybrid vectors from embedding service
+            embed_response = self._get_hybrid_vectors(query)
+            if not embed_response:
+                return self._create_error_response("Failed to get embeddings")
+
+            # Step 2: Search with vectors
+            search_response = self._search_with_vectors(
+                dense_vector=embed_response["dense_vector"],
+                sparse_vector=embed_response["sparse_vector"],
+                limit=limit,
+                score_threshold=score_threshold,
+                user_id=user_id
+            )
+
+            return search_response
+
+        except Exception as e:
+            logger.error(f"❌ [KnowledgeBase] Search failed: {str(e)}")
+            return self._create_error_response(str(e))
+
+    def _get_hybrid_vectors(self, query: str) -> dict:
+        """Get both dense and sparse vectors from embedding service."""
+        try:
+            logger.info(f"🧠 [KnowledgeBase] Getting hybrid vectors for: '{query}'")
+
+            response = requests.post(
+                f"{self.embedding_service_url}/embed-hybrid",
+                json={"text": query},
+                headers={"Content-Type": "application/json"},
+                timeout=15
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                sparse_terms = result.get("sparse_terms", 0)
+                dense_dim = result.get("dense_dimension", 0)
+
+                logger.info(f"✅ [KnowledgeBase] Got hybrid vectors: {dense_dim}D dense, {sparse_terms} sparse terms")
+                return result
+            else:
+                logger.error(f"❌ [KnowledgeBase] Embedding service error: {response.status_code}")
+                return None
+
+        except Exception as e:
+            logger.error(f"❌ [KnowledgeBase] Failed to get hybrid vectors: {str(e)}")
+            return None
+
+    def _search_with_vectors(self,
+                           dense_vector: list,
+                           sparse_vector: dict,
+                           limit: int,
+                           score_threshold: float,
+                           user_id: str = None) -> dict:
+        """Search using pre-computed vectors."""
+        try:
+            # Prepare search payload
             payload = {
-                "query_text": query,
+                "dense_vector": dense_vector,
+                "sparse_vector": sparse_vector,
                 "limit": limit,
                 "score_threshold": score_threshold
             }
 
-            # Add user_id if provided
+            # Add user_id filter if provided (note: current schema doesn't support this yet)
             if user_id:
-                payload["user_id"] = user_id
-                logger.info(f"🔍 [KnowledgeBase] User-filtered search for: {user_id}")
+                logger.warning(f"⚠️ [KnowledgeBase] User filtering not yet supported in new endpoint: {user_id}")
 
-            # Call database service hybrid search endpoint
+            # Call new database service endpoint
             response = requests.post(
-                f"{self.database_service_url}/hybrid-search",
+                f"{self.database_service_url}/hybrid-search-with-vectors",
                 json=payload,
                 headers={"Content-Type": "application/json"},
                 timeout=15
@@ -67,46 +130,31 @@ class KnowledgeBase:
                 total_found = result.get("total_found", 0)
                 results = result.get("results", [])
 
-                logger.info(f"✅ [KnowledgeBase] Hybrid search ({search_type}) found {total_found} results")
+                logger.info(f"✅ [KnowledgeBase] Vector search ({search_type}) found {total_found} results")
 
                 return {
                     "success": True,
                     "results": results,
                     "total_found": total_found,
-                    "search_type": search_type,
-                    "query": query
+                    "search_type": search_type
                 }
             else:
                 logger.error(f"❌ [KnowledgeBase] Database service error: {response.status_code}")
-                return {
-                    "success": False,
-                    "results": [],
-                    "total_found": 0,
-                    "search_type": "error",
-                    "error": f"Database service returned {response.status_code}",
-                    "query": query
-                }
+                return self._create_error_response(f"Database service returned {response.status_code}")
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ [KnowledgeBase] Request error: {str(e)}")
-            return {
-                "success": False,
-                "results": [],
-                "total_found": 0,
-                "search_type": "error",
-                "error": f"Network error: {str(e)}",
-                "query": query
-            }
         except Exception as e:
-            logger.error(f"❌ [KnowledgeBase] Unexpected error: {str(e)}")
-            return {
-                "success": False,
-                "results": [],
-                "total_found": 0,
-                "search_type": "error",
-                "error": f"Unexpected error: {str(e)}",
-                "query": query
-            }
+            logger.error(f"❌ [KnowledgeBase] Vector search failed: {str(e)}")
+            return self._create_error_response(str(e))
+
+    def _create_error_response(self, error_message: str) -> dict:
+        """Create standardized error response."""
+        return {
+            "success": False,
+            "results": [],
+            "total_found": 0,
+            "search_type": "error",
+            "error": error_message
+        }
 
     def enhance_context(self,
                        query: str,

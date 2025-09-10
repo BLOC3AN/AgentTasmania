@@ -12,9 +12,11 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
 from src.embedding.model_manager import EmbeddingModelManager
+from src.embedding.hybrid_model_manager import HybridModelManager
 from src.models.schemas import (
     EmbedTextRequest, EmbedTextResponse,
     EmbedBatchRequest, EmbedBatchResponse,
+    EmbedHybridRequest, EmbedHybridResponse,
     HealthResponse
 )
 
@@ -24,17 +26,25 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global model manager
+# Global model managers
 model_manager = None
+hybrid_model_manager = None
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Startup
-    global model_manager
+    global model_manager, hybrid_model_manager
     try:
+        # Load legacy dense-only model manager
         model_manager = EmbeddingModelManager()
         await model_manager.load_model()
+
+        # Load hybrid model manager (dense + sparse)
+        hybrid_model_manager = HybridModelManager()
+        await hybrid_model_manager.load_models()
+
         logger.info("Embedding service started successfully")
+        logger.info("✅ Both legacy and hybrid models loaded")
     except Exception as e:
         logger.error(f"Failed to start embedding service: {e}")
         raise
@@ -62,8 +72,13 @@ app.add_middleware(
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     try:
-        if model_manager and model_manager.is_loaded():
-            model_status = "loaded"
+        legacy_loaded = model_manager and model_manager.is_loaded()
+        hybrid_loaded = hybrid_model_manager and hybrid_model_manager.is_loaded()
+
+        if legacy_loaded and hybrid_loaded:
+            model_status = "hybrid_ready"
+        elif legacy_loaded:
+            model_status = "legacy_only"
         else:
             model_status = "not_loaded"
     except Exception:
@@ -92,6 +107,53 @@ async def embed_text(request: EmbedTextRequest):
         logger.error(f"Error embedding text: {e}")
         raise HTTPException(status_code=500, detail="Failed to embed text")
 
+@app.post("/embed-hybrid", response_model=EmbedHybridResponse)
+async def embed_hybrid(request: EmbedHybridRequest):
+    """
+    Create both dense and sparse vectors for hybrid search.
+    Fallback to dense-only if BM25 fails.
+    """
+    try:
+        if not hybrid_model_manager or not hybrid_model_manager.is_loaded():
+            raise HTTPException(status_code=503, detail="Hybrid models not loaded")
+
+        try:
+            # Try to get both dense and sparse vectors
+            dense_vector, sparse_vector = await hybrid_model_manager.encode_hybrid(request.text)
+
+            return EmbedHybridResponse(
+                text=request.text,
+                dense_vector=dense_vector.tolist(),
+                sparse_vector=sparse_vector,
+                dense_dimension=len(dense_vector),
+                sparse_terms=len(sparse_vector)
+            )
+
+        except Exception as sparse_error:
+            # If hybrid fails, fallback to dense-only
+            logger.warning(f"Hybrid encoding failed, falling back to dense-only: {sparse_error}")
+
+            try:
+                dense_vector = await hybrid_model_manager.encode_dense(request.text)
+
+                return EmbedHybridResponse(
+                    text=request.text,
+                    dense_vector=dense_vector.tolist(),
+                    sparse_vector={},  # Empty sparse vector for fallback
+                    dense_dimension=len(dense_vector),
+                    sparse_terms=0
+                )
+
+            except Exception as dense_error:
+                logger.error(f"Both hybrid and dense encoding failed: {dense_error}")
+                raise HTTPException(status_code=500, detail="All embedding methods failed")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in hybrid embedding: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create hybrid embedding")
+
 @app.post("/embed-batch", response_model=EmbedBatchResponse)
 async def embed_batch(request: EmbedBatchRequest):
     try:
@@ -119,10 +181,11 @@ async def embed_batch(request: EmbedBatchRequest):
 
 @app.get("/model-info")
 async def get_model_info():
+    """Get information about loaded models (legacy format for compatibility)."""
     try:
         if not model_manager or not model_manager.is_loaded():
             raise HTTPException(status_code=503, detail="Model not loaded")
-        
+
         return {
             "model_name": model_manager.model_name,
             "dimension": model_manager.get_dimension(),
@@ -131,6 +194,19 @@ async def get_model_info():
     except Exception as e:
         logger.error(f"Error getting model info: {e}")
         raise HTTPException(status_code=500, detail="Failed to get model info")
+
+@app.get("/hybrid-model-info")
+async def get_hybrid_model_info():
+    """Get information about hybrid models (dense + sparse)."""
+    try:
+        if not hybrid_model_manager:
+            raise HTTPException(status_code=503, detail="Hybrid models not initialized")
+
+        return hybrid_model_manager.get_model_info()
+
+    except Exception as e:
+        logger.error(f"Error getting hybrid model info: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get hybrid model info")
 
 if __name__ == "__main__":
     import uvicorn

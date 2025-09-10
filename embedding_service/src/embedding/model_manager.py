@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 logger = logging.getLogger(__name__)
 
 class EmbeddingModelManager:
-    def __init__(self, model_name: str = "sentence-transformers/distiluse-base-multilingual-cased-v1"):
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.model_name = model_name
         self.model = None
         self._loaded = False

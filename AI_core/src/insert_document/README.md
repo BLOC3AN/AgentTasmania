@@ -8,8 +8,8 @@ Hệ thống xử lý tài liệu DOCX tự động từ đọc file → làm s�
 - **Làm sạch dữ liệu**: Loại bỏ ký tự đặc biệt, normalize whitespace
 - **Chia nhỏ (Chunking)**: Chia document thành chunks với TokenTextSplitter
 - **Metadata extraction**: Tự động extract subject, week từ tên file
-- **Dense Embedding**: Tích hợp với embedding service để tạo dense vector (512-dim)
-- **Sparse Vectors**: BM25 encoder để tạo sparse vectors cho hybrid search
+- **Dense Embedding**: Tích hợp với embedding service để tạo dense vector (384-dim)
+- **Sparse Vectors**: Centralized BM25 via embedding service cho hybrid search
 - **Hybrid Storage**: Lưu cả dense và sparse vectors vào Qdrant database
 - **Batch processing**: Xử lý nhiều files cùng lúc
 - **Error handling**: Xử lý lỗi graceful và logging chi tiết
@@ -101,7 +101,7 @@ DocxDataProcessor(
 - `clean_text(text: str) -> str`: Làm sạch text
 - `chunk_text(text: str) -> List[str]`: Chia text thành chunks
 - `extract_metadata(file_path: str) -> Dict[str, str]`: Extract metadata từ tên file
-- `embed_text(text: str) -> Optional[List[float]]`: Tạo embedding
+- `embed_text_hybrid(text: str) -> Optional[Dict[str, Any]]`: Tạo hybrid embedding (dense + sparse)
 - `upsert_document(payload: Dict[str, Any]) -> bool`: Lưu vào database
 - `get_stats() -> Dict[str, int]`: Lấy thống kê
 - `reset_stats()`: Reset thống kê
@@ -126,7 +126,7 @@ CHUNK_OVERLAP=50
 {
   "id": "uuid-string",
   "vector": {
-    "dense_vector": [0.1, 0.2, ...],  // 512-dim embedding
+    "dense_vector": [0.1, 0.2, ...],  // 384-dim embedding
     "bm25_sparse_vector": {
       "indices": [1, 5, 10, ...],     // Term indices
       "values": [0.8, 0.6, 0.4, ...]  // BM25 scores

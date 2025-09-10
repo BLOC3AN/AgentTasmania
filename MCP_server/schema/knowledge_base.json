@@ -1,6 +1,6 @@
 {
   "name": "knowledges_base",
-  "description": "Search and retrieve information from the knowledge base using hybrid search. Use this tool when users ask for information, facts, or need to search for specific content. Always use this tool for knowledge-related queries.",
+  "description": "Use this tool when search or retrieve informations from the knowledge base. Use this tool when users ask for information, facts, or need to search for specific content. Always use this tool for knowledge-related queries.",
   "args_schema": {
     "type": "object",
     "properties": {
