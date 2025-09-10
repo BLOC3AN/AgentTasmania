@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { AdvancedAudioProcessor, AudioMetrics } from '@/utils/AdvancedAudioProcessor';
+import { TranscriptionFilter, FilterResult } from '@/utils/TranscriptionFilter';
 
 interface SmartMicWebSocketProps {
   onTranscription: (text: string) => void;
@@ -17,6 +19,9 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
   const [error, setError] = useState<string | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const [lastTranscription, setLastTranscription] = useState<string>('');
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  const [noiseFloor, setNoiseFloor] = useState<number>(0);
+  const [currentMetrics, setCurrentMetrics] = useState<AudioMetrics | null>(null);
 
   // WebSocket and audio refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -29,13 +34,22 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
   const lastSpeechTimeRef = useRef<number | null>(null);
   const recordingStartTimeRef = useRef<number | null>(null);
 
+  // Advanced processing refs
+  const audioProcessorRef = useRef<AdvancedAudioProcessor | null>(null);
+  const transcriptionFilterRef = useRef<TranscriptionFilter | null>(null);
+
   // Prevent duplicate transcriptions
   const lastFinalTranscriptionRef = useRef<string>('');
   const transcriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
+  // Speech session management
+  const speechSessionActiveRef = useRef(false);
+  const continuousSilenceStartRef = useRef<number | null>(null);
+
   // Constants from smart_mic.py
   const SILENCE_DURATION = 1000; // 1 second
   const MIN_RECORDING_TIME = 500; // 0.5 seconds
+  const SESSION_END_SILENCE = 1500; // 1.5 seconds to end speech session
   const WEBSOCKET_URL = 'ws://localhost:8080'; // Local WebSocket server with external ASR integration
 
   useEffect(() => {
@@ -53,16 +67,43 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
   const initializeWebSocketVAD = async () => {
     try {
       console.log('🔌 Initializing WebSocket VAD...');
-      
+
+      // Initialize advanced processors
+      audioProcessorRef.current = new AdvancedAudioProcessor({
+        energyThreshold: 0.01,
+        rmsThreshold: 0.02,
+        minConfidence: 0.6,
+        minSpeechDuration: 300,
+        maxSilenceDuration: 1500
+      });
+
+      transcriptionFilterRef.current = new TranscriptionFilter({
+        minConfidence: 0.7,
+        minLength: 10,
+        minWords: 2,
+        enableNoiseWordFilter: true,
+        enableRepetitionFilter: true,
+        enableLanguageFilter: true
+      });
+
+      // Set up calibration monitoring
+      setIsCalibrating(true);
+      setTimeout(() => {
+        if (audioProcessorRef.current) {
+          setNoiseFloor(audioProcessorRef.current.getNoiseFloor());
+          setIsCalibrating(false);
+        }
+      }, 3000);
+
       // Connect to WebSocket server
       await connectWebSocket();
-      
+
       // Initialize audio capture
       await initializeAudioCapture();
-      
+
       onStatusChange('listening');
       console.log('✅ WebSocket VAD initialized successfully!');
-      
+
     } catch (error) {
       console.error('❌ WebSocket VAD initialization failed:', error);
       onStatusChange('idle');
@@ -113,8 +154,6 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
   };
 
   const handleWebSocketMessage = (message: any) => {
-    console.log('📨 WebSocket message:', message.type);
-
     switch (message.type) {
       case 'connected':
         console.log('🎉 Server connected:', message.message);
@@ -124,25 +163,43 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
         const { isSpeech, confidence } = message.data;
         setIsSpeechDetected(isSpeech);
         setVadConfidence(confidence);
-        
+
         if (isSpeech) {
           lastSpeechTimeRef.current = Date.now();
-          silenceStartRef.current = null;
-          
-          // Auto-start recording if not already recording
-          if (!isRecordingRef.current) {
-            startRecording();
+          continuousSilenceStartRef.current = null;
+
+          // Start speech session if not active
+          if (!speechSessionActiveRef.current) {
+            speechSessionActiveRef.current = true;
+            console.log('🎤 Starting new speech session');
+
+            // Auto-start recording for new speech session
+            if (!isRecordingRef.current) {
+              startRecording();
+            }
           }
         } else {
-          // Check for auto-stop condition
-          if (isRecordingRef.current && lastSpeechTimeRef.current) {
-            const silenceDuration = Date.now() - lastSpeechTimeRef.current;
-            const recordingDuration = recordingStartTimeRef.current ? 
+          // Handle silence during speech session
+          if (speechSessionActiveRef.current) {
+            if (!continuousSilenceStartRef.current) {
+              continuousSilenceStartRef.current = Date.now();
+            }
+
+            const silenceDuration = Date.now() - continuousSilenceStartRef.current;
+            const recordingDuration = recordingStartTimeRef.current ?
               Date.now() - recordingStartTimeRef.current : 0;
 
-            if (silenceDuration >= SILENCE_DURATION && recordingDuration >= MIN_RECORDING_TIME) {
+            // Auto-stop recording after silence threshold
+            if (isRecordingRef.current && silenceDuration >= SILENCE_DURATION && recordingDuration >= MIN_RECORDING_TIME) {
               console.log(`🔇 Auto-stopping: ${silenceDuration}ms silence, ${recordingDuration}ms total`);
               stopRecording();
+            }
+
+            // End speech session after extended silence
+            if (silenceDuration >= SESSION_END_SILENCE) {
+              console.log(`🔚 Ending speech session: ${silenceDuration}ms continuous silence`);
+              speechSessionActiveRef.current = false;
+              continuousSilenceStartRef.current = null;
             }
           }
         }
@@ -153,13 +210,13 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
         break;
 
       case 'transcription':
-        const { text, isFinal, source } = message.data;
-        console.log('📝 Transcription received:', text, `(${source || 'unknown'})`, isFinal ? '[FINAL]' : '[PARTIAL]');
+        const { text, isFinal, source, confidence } = message.data;
+        console.log('📝 Transcription received:', text, `(${source || 'unknown'})`, isFinal ? '[FINAL]' : '[PARTIAL]', `confidence: ${confidence || 'N/A'}`);
 
         // Update local transcription display (show partial results)
         setLastTranscription(text);
 
-        // Only send to parent component when transcription is final and different from last
+        // Only process final transcriptions
         if (isFinal && text.trim().length > 0) {
           // Check if this is a duplicate of the last final transcription
           if (lastFinalTranscriptionRef.current === text.trim()) {
@@ -167,23 +224,60 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
             return;
           }
 
-          // Clear any existing timeout
-          if (transcriptionTimeoutRef.current) {
-            clearTimeout(transcriptionTimeoutRef.current);
+          // Apply advanced transcription filtering
+          if (transcriptionFilterRef.current) {
+            const filterResult = transcriptionFilterRef.current.filterTranscription(
+              text,
+              confidence || 0.8,
+              undefined, // duration not available from WebSocket
+              undefined  // word confidences not available
+            );
+
+            console.log('🔍 Transcription filter result:', {
+              isValid: filterResult.isValid,
+              confidence: filterResult.confidence.toFixed(3),
+              reason: filterResult.reason,
+              metadata: filterResult.metadata
+            });
+
+            if (!filterResult.isValid) {
+              console.log('🚫 Transcription filtered out:', filterResult.reason);
+              setLastTranscription(`[Filtered: ${filterResult.reason}]`);
+
+              // Clear filtered transcription after short delay
+              setTimeout(() => {
+                setLastTranscription('');
+              }, 2000);
+              return;
+            }
+
+            // Use filtered text if available
+            const finalText = filterResult.filteredText || text;
+
+            // Clear any existing timeout
+            if (transcriptionTimeoutRef.current) {
+              clearTimeout(transcriptionTimeoutRef.current);
+            }
+
+            console.log('✅ Final transcription confirmed after filtering:', finalText);
+            lastFinalTranscriptionRef.current = finalText.trim();
+            onTranscription(finalText);
+            onStatusChange('speaking');
+
+            // Clear transcription after showing result
+            transcriptionTimeoutRef.current = setTimeout(() => {
+              setLastTranscription('');
+              onStatusChange('idle');
+              lastFinalTranscriptionRef.current = ''; // Reset for next transcription
+              console.log('🎧 Ready for next voice input...');
+            }, 3000);
+          } else {
+            // Fallback to original logic if filter not available
+            console.log('⚠️ Transcription filter not available, using original logic');
+            lastFinalTranscriptionRef.current = text.trim();
+            onTranscription(text);
+            onStatusChange('speaking');
           }
-
-          console.log('✅ Final transcription confirmed:', text);
-          lastFinalTranscriptionRef.current = text.trim();
-          onTranscription(text);
-          onStatusChange('speaking');
-
-          // Clear transcription after showing result
-          transcriptionTimeoutRef.current = setTimeout(() => {
-            setLastTranscription('');
-            onStatusChange('idle');
-            lastFinalTranscriptionRef.current = ''; // Reset for next transcription
-            console.log('🎧 Ready for next voice input...');
-          }, 3000);
         } else if (!isFinal) {
           // For partial results, just update the display without triggering parent callback
           console.log('⏳ Partial transcription (not sending to parent):', text);
@@ -239,10 +333,32 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
       
       processor.onaudioprocess = (event) => {
         const inputData = event.inputBuffer.getChannelData(0);
-        
-        // Update audio level for UI
-        updateAudioLevel();
-        
+
+        // Process audio with advanced processor
+        if (audioProcessorRef.current) {
+          const metrics = audioProcessorRef.current.processAudioFrame(inputData, 16000);
+          setCurrentMetrics(metrics);
+
+          // Update UI with processed metrics
+          setAudioLevel(metrics.rms * 100);
+
+          // Determine if speech is detected
+          const isSpeechDetected = audioProcessorRef.current.isSpeech(metrics);
+          setIsSpeechDetected(isSpeechDetected);
+          setVadConfidence(metrics.confidence);
+
+          // Auto-start/stop recording based on advanced VAD
+          if (isSpeechDetected && !isRecordingRef.current) {
+            console.log('🎤 Advanced VAD detected speech - starting recording');
+            startRecording();
+          } else if (!isSpeechDetected && isRecordingRef.current) {
+            // Let the existing silence detection handle stopping
+          }
+        } else {
+          // Fallback to basic audio level update
+          updateAudioLevel();
+        }
+
         // Send audio chunk to WebSocket server
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           sendAudioChunk(inputData);
@@ -341,6 +457,14 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
       transcriptionTimeoutRef.current = null;
     }
 
+    // Reset advanced processors
+    if (audioProcessorRef.current) {
+      audioProcessorRef.current.reset();
+      audioProcessorRef.current = null;
+    }
+
+    transcriptionFilterRef.current = null;
+
     // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close();
@@ -374,8 +498,19 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
     setError(null);
     setPermissionStatus('unknown');
     setLastTranscription('');
+    setIsCalibrating(false);
+    setNoiseFloor(0);
+    setCurrentMetrics(null);
     isRecordingRef.current = false;
     lastFinalTranscriptionRef.current = '';
+
+    // Reset speech session refs
+    speechSessionActiveRef.current = false;
+    continuousSilenceStartRef.current = null;
+    recordingStartTimeRef.current = null;
+    lastSpeechTimeRef.current = null;
+    silenceStartRef.current = null;
+
     onStatusChange('idle');
   };
 
@@ -405,6 +540,20 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
           {connectionStatus === 'connecting' && '🟡 Connecting...'}
           {connectionStatus === 'disconnected' && '🔴 Disconnected'}
         </div>
+
+        {/* Calibration Status */}
+        {isCalibrating && (
+          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 ml-2">
+            🎚️ Calibrating Noise Floor...
+          </div>
+        )}
+
+        {/* Noise Floor Display */}
+        {!isCalibrating && noiseFloor > 0 && (
+          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 ml-2">
+            📊 Noise Floor: {(noiseFloor * 1000).toFixed(1)}
+          </div>
+        )}
       </div>
 
       {/* Enhanced Status Display */}
@@ -521,6 +670,21 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
           <div className="text-green-800 text-sm font-medium mb-1">✅ Transcription</div>
           <div className="text-green-700 text-sm">{lastTranscription}</div>
+        </div>
+      )}
+
+      {/* Advanced Metrics Display */}
+      {currentMetrics && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div className="text-xs font-medium text-gray-700 mb-2">🔬 Advanced Audio Metrics</div>
+          <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+            <div>RMS: {(currentMetrics.rms * 1000).toFixed(1)}</div>
+            <div>Energy: {(currentMetrics.energy * 1000).toFixed(1)}</div>
+            <div>ZCR: {currentMetrics.zcr.toFixed(3)}</div>
+            <div>Confidence: {(currentMetrics.confidence * 100).toFixed(0)}%</div>
+            <div>Spectral: {currentMetrics.spectralCentroid.toFixed(0)}Hz</div>
+            <div>Rolloff: {currentMetrics.spectralRolloff.toFixed(0)}Hz</div>
+          </div>
         </div>
       )}
 
