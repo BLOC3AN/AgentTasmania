@@ -47,3 +47,12 @@ class HybridSearchResponse(BaseModel):
     results: List[Dict[str, Any]]
     total_found: int
     search_type: str  # "hybrid", "dense_only", "sparse_only"
+
+class HybridSearchWithVectorsRequest(BaseModel):
+    dense_vector: List[float]
+    sparse_vector: Optional[Dict[int, float]] = {}  # Empty dict means dense-only
+    limit: Optional[int] = 5
+    score_threshold: Optional[float] = 0.5
+    subject: Optional[str] = None
+    title: Optional[str] = None
+    week: Optional[str] = None

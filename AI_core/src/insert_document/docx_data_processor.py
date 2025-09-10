@@ -14,12 +14,12 @@ import re
 import uuid
 import requests
 import logging
-import math
-from collections import Counter
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain.text_splitter import TokenTextSplitter
+# Removed: from .fastembed_bm25_encoder import FastEmbedBM25Encoder
+# Now using centralized embed-hybrid endpoint
 
 # Cấu hình logging
 logging.basicConfig(
@@ -29,103 +29,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class BM25Encoder:
-    """Simple BM25 encoder for sparse vector generation"""
 
-    def __init__(self, k1: float = 1.2, b: float = 0.75):
-        self.k1 = k1
-        self.b = b
-        self.vocabulary = {}
-        self.doc_freqs = {}
-        self.idf = {}
-        self.corpus_size = 0
-        self.avgdl = 0
-        self.corpus_stats_ready = False
-
-    def tokenize(self, text: str) -> List[str]:
-        """Simple tokenization"""
-        tokens = re.findall(r'\b\w+\b', text.lower())
-        return tokens
-
-    def build_corpus_statistics(self, documents: List[str]) -> None:
-        """Build BM25 statistics from corpus"""
-        try:
-            self.corpus_size = len(documents)
-            doc_freqs = {}
-            total_doc_length = 0
-
-            for document in documents:
-                tokens = self.tokenize(document)
-                total_doc_length += len(tokens)
-
-                # Count unique terms in this document for document frequency
-                unique_tokens = set(tokens)
-                for token in unique_tokens:
-                    doc_freqs[token] = doc_freqs.get(token, 0) + 1
-
-            self.doc_freqs = doc_freqs
-            self.avgdl = total_doc_length / self.corpus_size if self.corpus_size > 0 else 0
-
-            # Calculate IDF for each term
-            for token, freq in doc_freqs.items():
-                # BM25 IDF formula: log((N - df + 0.5) / (df + 0.5))
-                self.idf[token] = math.log((self.corpus_size - freq + 0.5) / (freq + 0.5))
-
-                # Build vocabulary mapping
-                if token not in self.vocabulary:
-                    self.vocabulary[token] = len(self.vocabulary)
-
-            self.corpus_stats_ready = True
-            logger.info(f"🔍 BM25 corpus statistics built: {self.corpus_size} documents, {len(self.vocabulary)} unique terms")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to build BM25 corpus statistics: {e}")
-            raise
-
-    def encode(self, text: str, doc_length: Optional[int] = None) -> Dict[str, Any]:
-        """Encode text to BM25 sparse vector in Qdrant format"""
-        if not self.corpus_stats_ready:
-            logger.warning("⚠️ BM25 corpus statistics not ready, returning empty sparse vector")
-            return {"indices": [], "values": []}
-
-        try:
-            tokens = self.tokenize(text)
-            token_counts = Counter(tokens)
-
-            indices = []
-            values = []
-
-            # Use provided doc_length or calculate from tokens
-            doc_len = doc_length if doc_length is not None else len(tokens)
-
-            for token, tf in token_counts.items():
-                if token in self.idf and token in self.vocabulary:
-                    token_idx = self.vocabulary[token]
-                    idf = self.idf[token]
-
-                    # BM25 formula: IDF * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * |D| / avgdl))
-                    numerator = idf * tf * (self.k1 + 1)
-                    denominator = tf + self.k1 * (1 - self.b + self.b * doc_len / self.avgdl)
-                    score = numerator / denominator
-
-                    if score > 0:
-                        indices.append(token_idx)
-                        values.append(score)
-
-            return {"indices": indices, "values": values}
-
-        except Exception as e:
-            logger.error(f"❌ Failed to encode text: {e}")
-            return {"indices": [], "values": []}
-
-    def get_corpus_info(self) -> Dict[str, Any]:
-        """Get corpus statistics info"""
-        return {
-            "corpus_size": self.corpus_size,
-            "vocabulary_size": len(self.vocabulary),
-            "average_doc_length": self.avgdl,
-            "stats_ready": self.corpus_stats_ready
-        }
 
 
 class DocxDataProcessor:
@@ -151,9 +55,8 @@ class DocxDataProcessor:
             chunk_overlap=chunk_overlap
         )
 
-        # BM25 encoder for sparse vectors
-        self.bm25_encoder = BM25Encoder() if enable_bm25 else None
-        self.corpus_texts = []  # Store texts for BM25 corpus building
+        # Note: BM25 now handled by embedding service via /embed-hybrid
+        # No need for local BM25 encoder anymore
 
         # Stats tracking
         self.stats = {
@@ -247,38 +150,37 @@ class DocxDataProcessor:
             logger.error(f"❌ Lỗi chunk text: {e}")
             return [text]  # Fallback: return original text as single chunk
     
-    def embed_text(self, text: str) -> Optional[List[float]]:
-        """Tạo embedding cho text qua API"""
+    def embed_text_hybrid(self, text: str) -> Optional[Dict[str, Any]]:
+        """Tạo hybrid embedding (dense + sparse) cho text qua API"""
         try:
             response = requests.post(
-                f"{self.embed_service_url}/embed",
+                f"{self.embed_service_url}/embed-hybrid",
                 json={"text": text},
                 timeout=30
             )
             response.raise_for_status()
-            
-            embedding = response.json()["embedding"]
+
+            result = response.json()
             self.stats["successful_embeddings"] += 1
-            logger.debug(f"🔢 Created embedding: {len(embedding)} dimensions")
-            return embedding
-            
+
+            dense_dim = result.get("dense_dimension", 0)
+            sparse_terms = result.get("sparse_terms", 0)
+            logger.debug(f"🔢 Created hybrid embedding: {dense_dim}D dense, {sparse_terms} sparse terms")
+
+            return {
+                "dense_vector": result["dense_vector"],
+                "sparse_vector": result["sparse_vector"],
+                "dense_dimension": dense_dim,
+                "sparse_terms": sparse_terms
+            }
+
         except Exception as e:
-            logger.error(f"❌ Lỗi embed text: {e}")
+            logger.error(f"❌ Lỗi embed hybrid text: {e}")
             self.stats["failed_embeddings"] += 1
             return None
     
-    def create_sparse_vector(self, text: str) -> Optional[Dict[str, Any]]:
-        """Tạo sparse vector từ text sử dụng BM25"""
-        if not self.enable_bm25 or not self.bm25_encoder:
-            return None
-
-        try:
-            sparse_vector = self.bm25_encoder.encode(text)
-            logger.debug(f"🔍 Created sparse vector: {len(sparse_vector.get('indices', []))} terms")
-            return sparse_vector
-        except Exception as e:
-            logger.error(f"❌ Lỗi tạo sparse vector: {e}")
-            return None
+    # Removed: create_sparse_vector method
+    # Sparse vectors now created by embedding service via /embed-hybrid
 
     def build_bm25_corpus(self, texts: List[str]):
         """Build BM25 corpus từ danh sách texts"""
@@ -386,15 +288,19 @@ class DocxDataProcessor:
             for i, chunk in enumerate(chunks):
                 logger.info(f"📄 Processing chunk {i+1}/{len(chunks)}")
 
-                # Embed chunk (dense vector)
-                embedding = self.embed_text(chunk)
-                if embedding is None:
+                # Get hybrid embedding (dense + sparse)
+                hybrid_result = self.embed_text_hybrid(chunk)
+                if hybrid_result is None:
                     failed_chunks += 1
                     continue
 
                 # Tạo payload với hybrid vectors
                 payload = self.create_payload(chunk, metadata, i)
-                payload["vector"] = embedding
+                payload["vector"] = hybrid_result["dense_vector"]
+
+                # Add sparse vector if available
+                if hybrid_result["sparse_terms"] > 0:
+                    payload["sparse_vector"] = hybrid_result["sparse_vector"]
 
                 # Upsert vào database
                 success = self.upsert_document(payload)

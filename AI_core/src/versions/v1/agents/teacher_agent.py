@@ -91,7 +91,6 @@ class TaskerAgent:
             before_invoke = time.time()
             logger.info(f"⏱️ Time to create agent: {before_invoke - start_time:.4f} seconds")
 
-            logger.info(f"\nPROMTP: \n{prompt}\n")
             agent = create_tool_calling_agent(self.llm_model_instance.llm, self.tools,prompt)
             agent_executor = AgentExecutor(
                 agent=agent,

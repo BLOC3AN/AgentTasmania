@@ -1,7 +1,8 @@
 import os
 import requests
 from typing import List, Dict, Any, Optional
-from src.services.bm25_encoder import BM25Encoder
+# Removed: from src.services.fastembed_bm25_encoder import FastEmbedBM25Encoder
+# BM25 now handled by embedding_service via /embed-hybrid
 from src.utils.logger import Logger
 
 logger = Logger(__name__)
@@ -11,60 +12,13 @@ class VectorServices:
     def __init__(self, database_service_url: str, embedding_service_url: str = None):
         self.database_service_url = database_service_url
         self.embedding_service_url = embedding_service_url or os.getenv("EMBEDDING_SERVICE_URL", "http://embedding:8005")
-        self.bm25_encoder = BM25Encoder()
-        self._corpus_initialized = False
+        # Removed: self.bm25_encoder = FastEmbedBM25Encoder()
+        # BM25 now handled by embedding_service
+        # Removed: self._corpus_initialized = False
 
-    def _initialize_bm25_corpus(self, qdrant_config):
-        """Initialize BM25 with corpus from Qdrant - no training, just statistics."""
-        if self._corpus_initialized:
-            logger.debug("BM25 corpus already initialized, skipping")
-            return
+    # Removed: _initialize_bm25_corpus method
+    # BM25 initialization now handled by embedding_service
 
-        try:
-            logger.info("🔍 Initializing BM25 corpus from Qdrant documents...")
-
-            # Fetch all documents from Qdrant to build corpus statistics
-            documents = self._fetch_corpus_documents(qdrant_config)
-
-            if documents:
-                logger.info(f"📄 Fetched {len(documents)} documents from Qdrant")
-                self.bm25_encoder.build_corpus_statistics(documents)
-                self._corpus_initialized = True
-
-                # Get corpus info for logging
-                corpus_info = self.bm25_encoder.get_corpus_info()
-                logger.info(f"✅ BM25 corpus initialized successfully:")
-                logger.info(f"   📊 Documents: {corpus_info['corpus_size']}")
-                logger.info(f"   📝 Vocabulary: {corpus_info['vocabulary_size']} terms")
-                logger.info(f"   📏 Avg doc length: {corpus_info['average_doc_length']:.1f} tokens")
-            else:
-                logger.warning("❌ No documents found in Qdrant for BM25 corpus initialization")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize BM25 corpus: {e}")
-            import traceback
-            logger.debug(f"Stack trace: {traceback.format_exc()}")
-
-    def _fetch_corpus_documents(self, qdrant_config) -> List[str]:
-        """Fetch all document texts from Qdrant collection."""
-        try:
-            # Use Qdrant scroll to get all documents
-            scroll_result = qdrant_config.client.scroll(
-                collection_name=qdrant_config.collection_name,
-                limit=1000,  # Adjust based on corpus size
-                with_payload=True,
-                with_vectors=False
-            )
-
-            documents = []
-            for point in scroll_result[0]:  # scroll returns (points, next_page_offset)
-                if 'content' in point.payload:  # Changed from 'text' to 'content'
-                    documents.append(point.payload['content'])
-
-            return documents
-        except Exception as e:
-            logger.error(f"Failed to fetch corpus documents: {e}")
-            return []
 
     def search_vectors(self, query_vector: List[float], limit: int = 5, score_threshold: float = 0.7) -> List[Dict[str, Any]]:
         """Search for similar documents using dense vector."""
@@ -117,24 +71,11 @@ class VectorServices:
                 logger.error("Failed to get dense embedding")
                 return {"results": [], "total_found": 0, "search_type": "error"}
 
-            # Initialize BM25 corpus if not done yet
-            self._initialize_bm25_corpus(qdrant_config)
-
-            # Check if BM25 is ready for hybrid search
-            if self._corpus_initialized and self.bm25_encoder.corpus_stats_ready:
-                # Get sparse vector (now that corpus is ready)
-                sparse_vector = self.bm25_encoder.encode(query_text)
-
-                if sparse_vector:  # If we got a valid sparse vector
-                    logger.info(f"Performing hybrid search with {len(sparse_vector)} sparse terms")
-                    return self._qdrant_hybrid_search(
-                        dense_vector, sparse_vector, qdrant_config,
-                        limit, score_threshold, subject, title, week
-                    )
-                else:
-                    logger.warning("Sparse vector is empty, falling back to dense search")
-            else:
-                logger.warning("⚠️ BM25 not ready, falling back to dense search")
+            # DEPRECATED: Old BM25 approach
+            # BM25 now handled by embedding_service via /embed-hybrid
+            # This method should use the new flow: get vectors from embedding_service
+            logger.warning("⚠️ Using deprecated hybrid_search method. Consider using /hybrid-search-with-vectors endpoint instead.")
+            logger.warning("⚠️ BM25 now centralized in embedding_service, falling back to dense search")
 
             # Fallback to dense search
             return self._dense_only_search(dense_vector, qdrant_config, limit, score_threshold, subject, title, week)
