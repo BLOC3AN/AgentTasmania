@@ -85,7 +85,7 @@ export default function ChatBoxWebSocket() {
           timestamp: new Date(),
         };
         console.log("🚀 ~ sendMessage ~ agentMessage:", agentMessage)
-        // setMessages((prev: Message[]) => [...prev, agentMessage]);
+        setMessages((prev: Message[]) => [...prev, agentMessage]);
       } else {
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -93,7 +93,7 @@ export default function ChatBoxWebSocket() {
           sender: 'agent',
           timestamp: new Date(),
         };
-        // setMessages((prev: Message[]) => [...prev, errorMessage]);
+        setMessages((prev: Message[]) => [...prev, errorMessage]);
       }
     } catch (error) {
       const errorMessage: Message = {
@@ -102,7 +102,7 @@ export default function ChatBoxWebSocket() {
         sender: 'agent',
         timestamp: new Date(),
       };
-      // setMessages((prev: Message[]) => [...prev, errorMessage]);
+      setMessages((prev: Message[]) => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
     }

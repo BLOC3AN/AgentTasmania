@@ -50,7 +50,8 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
   const SILENCE_DURATION = 1000; // 1 second
   const MIN_RECORDING_TIME = 500; // 0.5 seconds
   const SESSION_END_SILENCE = 1500; // 1.5 seconds to end speech session
-  const WEBSOCKET_URL = 'ws://localhost:8080'; // Local WebSocket server with external ASR integration
+  // const WEBSOCKET_URL = 'wss://gxza5pgzegfdme-3000.proxy.runpod.net/ws/asr'; // External ASR Configuration
+  const WEBSOCKET_URL = 'wss://s6rou7ayi3jrzc-3000.proxy.runpod.net/ws/asr';
 
   useEffect(() => {
     if (isActive) {
@@ -78,12 +79,12 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
       });
 
       transcriptionFilterRef.current = new TranscriptionFilter({
-        minConfidence: 0.5,  // Lowered from 0.7 to 0.5 - more permissive
-        minLength: 5,        // Lowered from 10 to 5 - allow shorter phrases
-        minWords: 1,         // Lowered from 2 to 1 - allow single meaningful words
-        enableNoiseWordFilter: true,
-        enableRepetitionFilter: true,
-        enableLanguageFilter: true
+        minConfidence: 0.3,  // Lowered from 0.5 to 0.3 - more permissive for external ASR
+        minLength: 3,        // Lowered from 5 to 3 - allow shorter phrases
+        minWords: 1,         // Allow single meaningful words
+        enableNoiseWordFilter: false,  // Disable for external ASR testing
+        enableRepetitionFilter: false, // Disable for external ASR testing
+        enableLanguageFilter: false    // Disable for external ASR testing
       });
 
       // Set up calibration monitoring

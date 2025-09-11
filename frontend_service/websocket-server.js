@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const http = require('http');
 
 // External ASR Configuration
+// const EXTERNAL_ASR_URL = 'wss://gxza5pgzegfdme-3000.proxy.runpod.net/ws/asr';
 const EXTERNAL_ASR_URL = 'wss://s6rou7ayi3jrzc-3000.proxy.runpod.net/ws/asr';
 const USE_EXTERNAL_ASR = true; // Set to false to use local processing only
 
