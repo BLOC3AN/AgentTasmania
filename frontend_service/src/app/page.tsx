@@ -1,6 +1,6 @@
 'use client';
 
-import ChatBox from '@/components/ChatBox';
+import ChatBoxWebSocket from '@/components/ChatBoxWebSocket';
 
 export default function Home() {
 
@@ -191,8 +191,8 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Chat Box Component */}
-      <ChatBox />
+      {/* WebSocket VAD Chat Box Component */}
+      <ChatBoxWebSocket />
     </div>
   );
 }

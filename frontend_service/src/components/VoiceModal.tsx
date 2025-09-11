@@ -15,6 +15,7 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [currentTranscription, setCurrentTranscription] = useState<string>('');
   const [transcriptionHistory, setTranscriptionHistory] = useState<string[]>([]);
+  const [audioLevel, setAudioLevel] = useState<number>(0);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -60,6 +61,35 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
     setCurrentTranscription('');
   };
 
+  // Gentle audio level animation - Eye-friendly
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    const animateAudioLevel = () => {
+      if (voiceStatus === 'listening') {
+        // Gentle, slower audio level changes (30fps instead of 60fps)
+        setAudioLevel(prev => {
+          const target = Math.random() * 20 + 8; // Reduced amplitude
+          return prev + (target - prev) * 0.05; // Slower interpolation
+        });
+      } else {
+        // Gradually decrease to idle level
+        setAudioLevel(prev => prev * 0.9 + 3);
+      }
+    };
+
+    if (isOpen) {
+      // Use setInterval instead of requestAnimationFrame for slower, eye-friendly updates
+      intervalId = setInterval(animateAudioLevel, 33); // ~30fps instead of 60fps
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isOpen, voiceStatus]);
+
   if (!isOpen) return null;
 
   const getStatusColor = () => {
@@ -80,6 +110,34 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
     }
   };
 
+  // Eye-Friendly Audio Visualization Component
+  const AudioVisualizer = () => {
+    const bars = Array.from({ length: 8 }, (_, i) => {
+      // Gentler height variations
+      const baseHeight = Math.max(6, audioLevel * (0.3 + Math.random() * 0.4));
+      const delay = i * 100; // Slower stagger
+      return (
+        <div
+          key={i}
+          className="bg-gradient-to-t from-blue-400 to-purple-400 rounded-full transition-all duration-500 ease-in-out"
+          style={{
+            height: `${baseHeight}px`,
+            width: '5px',
+            transitionDelay: `${delay}ms`,
+            transform: voiceStatus === 'listening' ? 'scaleY(1.1)' : 'scaleY(1)',
+            opacity: voiceStatus === 'listening' ? 0.9 : 0.6
+          }}
+        />
+      );
+    });
+
+    return (
+      <div className="flex items-end justify-center space-x-2 h-12 mb-4">
+        {bars}
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -88,160 +146,167 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
         onClick={onClose}
       />
 
-      {/* Modal Content */}
-      <div className="relative w-full max-w-4xl max-h-full bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-           style={{
-             maxWidth: 'calc(100vw - 32px)',
-             maxHeight: 'calc(100vh - 32px)'
-           }}>
+      {/* Modal Content - Two Column Layout */}
+      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 sm:p-6 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-xl sm:text-2xl font-bold truncate">Voice Assistant</h2>
-              <p className="text-blue-100 mt-1 text-sm sm:text-base truncate">WebSocket VAD Voice Processing</p>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors flex-shrink-0 ml-4"
-              title="Close (Esc)"
-            >
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className={`w-3 h-3 rounded-full ${
+              voiceStatus === 'listening' ? 'bg-green-400 animate-pulse' :
+              voiceStatus === 'processing' ? 'bg-yellow-400 animate-spin' :
+              voiceStatus === 'speaking' ? 'bg-purple-400 animate-bounce' :
+              'bg-gray-300'
+            }`} />
+            <h2 className="text-lg font-semibold">Voice Assistant</h2>
           </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
+            title="Close (Esc)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* Status Bar */}
-        <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 border-b flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-              <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                voiceStatus === 'listening' ? 'bg-green-500 animate-pulse' :
-                voiceStatus === 'processing' ? 'bg-blue-500 animate-spin' :
-                voiceStatus === 'speaking' ? 'bg-purple-500 animate-bounce' :
-                'bg-gray-400'
-              }`} />
-              <span className={`font-medium text-sm sm:text-base truncate ${getStatusColor()}`}>
-                {getStatusText()}
-              </span>
-            </div>
-            <div className="text-xs sm:text-sm text-gray-500 hidden sm:block">
-              Press <kbd className="px-2 py-1 bg-gray-200 rounded text-xs">Esc</kbd> to close
-            </div>
-          </div>
-        </div>
-
-        {/* Voice Interface */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="text-center max-w-2xl mx-auto">
-            <div className="mb-6 sm:mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mb-4">
-                <svg className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
+        {/* Main Content - Two Column Layout */}
+        <div className="flex">
+          {/* Left Column - Voice Interface */}
+          <div className="flex-1 p-6 border-r border-gray-200">
+            {/* Audio Visualizer */}
+            <div className="text-center mb-6">
+              <div className="mb-4">
+                <AudioVisualizer />
               </div>
-              <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">
                 Speak naturally
               </h3>
-              <p className="text-sm sm:text-base text-gray-600 px-4">
-                Your voice will be processed in real-time with advanced VAD technology
+              <p className="text-sm text-gray-600">
+                {voiceStatus === 'idle' && 'Ready to listen...'}
+                {voiceStatus === 'listening' && 'Listening to your voice...'}
+                {voiceStatus === 'processing' && 'Processing speech...'}
+                {voiceStatus === 'speaking' && 'Transcription complete!'}
               </p>
             </div>
 
-            {/* SmartMicWebSocket Component */}
-            <div className="bg-gray-50 rounded-xl p-4 sm:p-6">
+            {/* Hidden SmartMicWebSocket Component */}
+            <div className="hidden">
               <SmartMicWebSocket
                 isActive={isOpen}
                 onTranscription={handleTranscription}
-                onStatusChange={setVoiceStatus}
+                onStatusChange={(status) => {
+                  setVoiceStatus(status);
+                  // Simulate audio level for visualization
+                  if (status === 'listening') {
+                    setAudioLevel(Math.random() * 40 + 10);
+                  } else {
+                    setAudioLevel(5);
+                  }
+                }}
               />
             </div>
 
-            {/* Real-time Transcription Display */}
-            <div className="mt-4 sm:mt-6">
+            {/* Current Transcription - Compact */}
+            <div className="mt-6">
               {/* Current Transcription */}
               {currentTranscription && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-4">
-                  <div className="flex items-center space-x-2 mb-2">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                  <div className="flex items-center space-x-2 mb-1">
                     <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs sm:text-sm font-medium text-blue-700">Detecting...</span>
+                    <span className="text-xs font-medium text-blue-700">Detecting...</span>
                   </div>
-                  <p className="text-sm sm:text-base text-blue-800 font-medium break-words">{currentTranscription}</p>
+                  <p className="text-blue-800 text-sm">{currentTranscription}</p>
                 </div>
               )}
 
-              {/* Transcription History */}
+              {/* Latest Result */}
               {transcriptionHistory.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2 min-w-0 flex-1">
-                      <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-xs sm:text-sm font-medium text-green-700 truncate">Recent Transcriptions</span>
-                    </div>
-                    <button
-                      onClick={clearHistory}
-                      className="text-xs text-green-600 hover:text-green-800 hover:bg-green-100 px-2 py-1 rounded transition-colors flex-shrink-0"
-                      title="Clear history"
-                    >
-                      Clear
-                    </button>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-green-700">Latest Result</span>
                   </div>
-                  <div className="space-y-2 max-h-24 sm:max-h-32 overflow-y-auto">
-                    {transcriptionHistory.map((text, index) => (
-                      <div key={index} className="text-xs sm:text-sm text-green-800 bg-white rounded p-2 border border-green-100 break-words">
-                        &ldquo;{text}&rdquo;
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-green-800 text-sm bg-white rounded p-2 border border-green-100">
+                    &ldquo;{transcriptionHistory[transcriptionHistory.length - 1]}&rdquo;
+                  </p>
                 </div>
               )}
 
               {/* Empty State */}
               {!currentTranscription && transcriptionHistory.length === 0 && (
-                <div className="text-center py-6 sm:py-8">
-                  <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="text-center py-6">
+                  <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                     </svg>
                   </div>
-                  <p className="text-gray-500 text-xs sm:text-sm px-4">Start speaking to see your voice transcription here</p>
+                  <p className="text-gray-500 text-xs">Start speaking to see transcription</p>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Instructions */}
-            <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-xs sm:text-sm text-gray-600">
-              <div className="flex items-center justify-center sm:justify-start space-x-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
-                <span className="text-center sm:text-left">Auto-start when speech detected</span>
+          {/* Right Column - Voice History */}
+          <div className="w-80 bg-gray-50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-2">
+                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700">Voice History</span>
+                {transcriptionHistory.length > 0 && (
+                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                    {transcriptionHistory.length}
+                  </span>
+                )}
               </div>
-              <div className="flex items-center justify-center sm:justify-start space-x-2">
-                <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                <span className="text-center sm:text-left">Real-time audio processing</span>
-              </div>
-              <div className="flex items-center justify-center sm:justify-start space-x-2">
-                <div className="w-2 h-2 bg-purple-500 rounded-full flex-shrink-0"></div>
-                <span className="text-center sm:text-left">Advanced noise filtering</span>
-              </div>
+              {transcriptionHistory.length > 0 && (
+                <button
+                  onClick={clearHistory}
+                  className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded transition-colors"
+                  title="Clear all history"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* History List */}
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {transcriptionHistory.length > 0 ? (
+                transcriptionHistory.map((text, index) => (
+                  <div key={index} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                    <div className="flex items-start justify-between mb-1">
+                      <span className="text-xs text-gray-500 font-medium">#{index + 1}</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-800 leading-relaxed">
+                      &ldquo;{text}&rdquo;
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 mx-auto mb-3 bg-gray-200 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  </div>
+                  <p className="text-gray-500 text-xs">No voice history yet</p>
+                  <p className="text-gray-400 text-xs mt-1">Start speaking to build history</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 border-t flex-shrink-0">
-          <div className="flex items-center justify-between text-xs sm:text-sm text-gray-500">
-            <div className="truncate">
-              WebSocket VAD • Real-time Voice Processing
-            </div>
-            <div className="flex items-center space-x-2 sm:space-x-4 ml-4">
-              <span className="hidden sm:inline">Status:</span>
-              <span className={`${getStatusColor()} font-medium`}>{getStatusText()}</span>
-            </div>
-          </div>
+        {/* Footer - Minimal */}
+        <div className="bg-gray-50 px-6 py-3 border-t text-center">
+          <p className="text-xs text-gray-500">
+            Press <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Esc</kbd> to close
+          </p>
         </div>
       </div>
     </div>

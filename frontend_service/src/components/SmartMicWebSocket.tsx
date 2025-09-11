@@ -210,8 +210,8 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
         break;
 
       case 'transcription':
-        const { text, isFinal, source, confidence } = message.data;
-        console.log('📝 Transcription received:', text, `(${source || 'unknown'})`, isFinal ? '[FINAL]' : '[PARTIAL]', `confidence: ${confidence || 'N/A'}`);
+        const { text, isFinal, source, confidence: transcriptionConfidence } = message.data;
+        console.log('📝 Transcription received:', text, `(${source || 'unknown'})`, isFinal ? '[FINAL]' : '[PARTIAL]', `confidence: ${transcriptionConfidence || 'N/A'}`);
 
         // Update local transcription display (show partial results)
         setLastTranscription(text);
@@ -228,14 +228,14 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
           if (transcriptionFilterRef.current) {
             const filterResult = transcriptionFilterRef.current.filterTranscription(
               text,
-              confidence || 0.8,
+              transcriptionConfidence || 0.8,
               undefined, // duration not available from WebSocket
               undefined  // word confidences not available
             );
 
             console.log('🔍 Transcription filter result:', {
               isValid: filterResult.isValid,
-              confidence: filterResult.confidence.toFixed(3),
+              confidence: filterResult.confidence ? filterResult.confidence.toFixed(3) : 'N/A',
               reason: filterResult.reason,
               metadata: filterResult.metadata
             });

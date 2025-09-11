@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from '@/hooks/useSession';
-import SmartMicWebSocket from './SmartMicWebSocket';
+import VoiceModal from './VoiceModal';
 
 interface Message {
   id: string;
@@ -11,7 +11,11 @@ interface Message {
   timestamp: Date;
 }
 
-type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking';
+interface VoiceHistory {
+  id: string;
+  text: string;
+  timestamp: Date;
+}
 
 export default function ChatBoxWebSocket() {
   const { sessionId } = useSession();
@@ -21,7 +25,9 @@ export default function ChatBoxWebSocket() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [voiceHistory, setVoiceHistory] = useState<VoiceHistory[]>([]);
+  const [showVoiceHistory, setShowVoiceHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -78,6 +84,7 @@ export default function ChatBoxWebSocket() {
           sender: 'agent',
           timestamp: new Date(),
         };
+        console.log("🚀 ~ sendMessage ~ agentMessage:", agentMessage)
         // setMessages((prev: Message[]) => [...prev, agentMessage]);
       } else {
         const errorMessage: Message = {
@@ -117,18 +124,41 @@ export default function ChatBoxWebSocket() {
   };
 
   const toggleVoiceMode = () => {
-    setIsVoiceMode(!isVoiceMode);
     if (!isVoiceMode) {
-      console.log('🎧 Activating WebSocket VAD Voice Mode...');
+      console.log('🎧 Opening Voice Modal...');
+      setIsVoiceMode(true);
+      setShowVoiceModal(true);
     } else {
-      console.log('🔇 Deactivating Voice Mode...');
-      setVoiceStatus('idle');
+      console.log('🔇 Closing Voice Modal...');
+      setIsVoiceMode(false);
+      setShowVoiceModal(false);
     }
+  };
+
+  const closeVoiceModal = () => {
+    setIsVoiceMode(false);
+    setShowVoiceModal(false);
+  };
+
+  const toggleVoiceHistory = () => {
+    setShowVoiceHistory(!showVoiceHistory);
+  };
+
+  const clearVoiceHistory = () => {
+    setVoiceHistory([]);
   };
 
   const handleVoiceTranscription = (text: string) => {
     console.log('📝 Voice transcription received:', text);
-    
+
+    // Add to voice history
+    const voiceEntry: VoiceHistory = {
+      id: Date.now().toString(),
+      text: text,
+      timestamp: new Date()
+    };
+    setVoiceHistory(prev => [...prev, voiceEntry].slice(-10)); // Keep last 10 entries
+
     // Add transcribed message to chat
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -229,6 +259,23 @@ export default function ChatBoxWebSocket() {
           <span className="font-medium">WebSocket VAD Assistant</span>
         </div>
         <div className="flex items-center space-x-2">
+          {/* Voice History Button */}
+          {voiceHistory.length > 0 && (
+            <button
+              onClick={toggleVoiceHistory}
+              className={`text-white hover:text-gray-200 transition-colors relative ${
+                showVoiceHistory ? 'bg-white bg-opacity-20 rounded' : ''
+              }`}
+              title="Voice History"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              <span className="absolute -top-1 -right-1 bg-green-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                {voiceHistory.length}
+              </span>
+            </button>
+          )}
           <button
             onClick={toggleExpand}
             className="text-white hover:text-gray-200 transition-colors"
@@ -252,6 +299,42 @@ export default function ChatBoxWebSocket() {
           </button>
         </div>
       </div>
+
+      {/* Voice History Panel */}
+      {showVoiceHistory && voiceHistory.length > 0 && (
+        <div className="border-b border-gray-200 bg-green-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+              <span className="text-sm font-medium text-green-700">Voice History ({voiceHistory.length})</span>
+            </div>
+            <button
+              onClick={clearVoiceHistory}
+              className="text-xs text-green-600 hover:text-green-800 px-2 py-1 rounded transition-colors"
+              title="Clear voice history"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="space-y-1 max-h-24 overflow-y-auto">
+            {voiceHistory.slice(-5).reverse().map((entry) => (
+              <div key={entry.id} className="text-xs text-green-800 bg-white rounded px-2 py-1 border border-green-100 flex items-center justify-between">
+                <span className="truncate flex-1 mr-2">{entry.text}</span>
+                <span className="text-green-500 text-xs flex-shrink-0">
+                  {entry.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            ))}
+            {voiceHistory.length > 5 && (
+              <div className="text-xs text-green-400 text-center py-1">
+                ... and {voiceHistory.length - 5} more entries
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ height: isExpanded ? '480px' : '240px' }}>
@@ -285,23 +368,12 @@ export default function ChatBoxWebSocket() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* WebSocket VAD Voice Interface */}
-      {isVoiceMode && (
-        <div className="p-4 border-t border-gray-200 bg-gray-50">
-          <div className="text-center mb-4">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">WebSocket VAD Voice Assistant</h4>
-            
-            {/* SmartMicWebSocket Component */}
-            <SmartMicWebSocket
-              isActive={isVoiceMode}
-              onTranscription={handleVoiceTranscription}
-              onStatusChange={(status) => {
-                setVoiceStatus(status);
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* Voice Modal */}
+      <VoiceModal
+        isOpen={showVoiceModal}
+        onClose={closeVoiceModal}
+        onTranscription={handleVoiceTranscription}
+      />
 
       {/* Input */}
       <div className="p-4 border-t border-gray-200">
