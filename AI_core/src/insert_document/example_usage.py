@@ -13,11 +13,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from docx_data_processor import DocxDataProcessor
 
-services = {
-    "embed_service_url": "http://localhost:8005",
-    "database_service_url": "http://localhost:8002"
-}
-
+# services = {
+#     "embed_service_url": "http://localhost:8005",
+#     "database_service_url": "http://localhost:8002"
+# }
+# services = {
+#     "embed_service_url": "http://13.210.111.152:8005",
+#     "database_service_url": "http://13.210.111.152:8002"
+# }
 
 def check_services():
     """Kiểm tra các service có hoạt động không"""

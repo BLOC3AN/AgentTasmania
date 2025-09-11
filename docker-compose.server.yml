@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # AI Core Agent Service
+  ai-core:
+    container_name: service-ai-core
+    image: vanhoadotbui2628/ai-core:v1.2.1
+    ports:
+      - "8000:8000"
+    environment:
+      - API_PORT=8000
+      - MCP_SERVER_URL=http://mcp-server:8001
+      - DATABASE_URL=http://vectordb:8002
+    env_file:
+      - .env
+    networks:
+      - agent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MCP Server Service
+  mcp-server:
+    container_name: service-mcp-server
+    image: vanhoadotbui2628/mcp-server:v1.2.0
+    ports:
+      - "8001:8001"
+    environment:
+      - API_PORT=8001
+      - DATABASE_URL=http://vectordb:8002
+    env_file:
+      - .env
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # Embedding Service
+  embedding:
+    container_name: embedding
+    image: vanhoadotbui2628/embedding:v1.2.0
+    ports:
+      - "8005:8005"
+    environment:
+      - API_PORT=8005
+      - MODEL_CACHE_DIR=/app/models
+    env_file:
+      - .env
+    networks:
+      - agent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # VectorDB Service
+  vectordb:
+    container_name: service-vectordb
+    image: vanhoadotbui2628/vectordb:v1.2.0
+    ports:
+      - "8002:8002"
+    environment:
+      - API_PORT=8002
+      - EMBEDDING_SERVICE_URL=http://embedding:8005
+      - QDRANT_URL=http://qdrant:6333
+    env_file:
+      - .env
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # WebSocket Service
+  websocket:
+    container_name: service-websocket
+    image: vanhoadotbui2628/websocket:v1.2.0
+    ports:
+      - "8003:8003"
+    environment:
+      - API_PORT=8003
+      - MCP_API_URL=http://mcp-server:8001
+    env_file:
+      - .env
+    networks:
+      - agent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Service
+  frontend:
+    container_name: service-frontend
+    image: vanhoadotbui2628/frontend:v1.0.2
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://ai-core:8000
+      - NEXT_PUBLIC_WEBSOCKET_URL=ws://websocket:8003
+    networks:
+      - agent-network
+    restart: unless-stopped
+    depends_on:
+      - ai-core
+      - websocket
+      - mcp-server # thêm depends_on để đảm bảo mcp-server khởi động trước
+
+  # Postgres Service
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: Hai@30032000
+      POSTGRES_DB: mydb
+    networks:
+      - agent-network
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6389:6379"
+    volumes:
+      - ../data/redis:/data
+    restart: unless-stopped
+    networks:
+      - agent-network
+    command: redis-server --appendonly yes
+
+
+  # Qdrant Service
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: always
+    ports:
+      - "6333:6333" # For REST API
+      - "6334:6334" # For gRPC
+    expose:
+      - 6333
+      - 6334
+      - 6335
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    networks:
+      - agent-network
+
+  dozzle:
+    container_name: dozzle-agent-education
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "5555:5555"
+    environment:
+      - DOZZLE_LEVEL=info
+      - DOZZLE_TAILSIZE=300
+      - DOZZLE_AUTH=false
+    command: ["--addr=:5555"] 
+    restart: unless-stopped
+    networks:
+      - agent-network
+
+
+networks:
+  agent-network:
+    driver: bridge
+
+
+volumes:
+  logs:
+    driver: local

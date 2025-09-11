@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Install system dependencies including build tools for PyStemmer
 RUN apt-get update && apt-get install -y \
+    curl \
     gcc \
     g++ \
     build-essential \
