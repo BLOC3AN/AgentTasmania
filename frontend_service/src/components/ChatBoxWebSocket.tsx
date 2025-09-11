@@ -95,7 +95,7 @@ export default function ChatBoxWebSocket() {
         };
         setMessages((prev: Message[]) => [...prev, errorMessage]);
       }
-    } catch (error) {
+    } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: 'Sorry, I encountered an error. Please try again.',
@@ -196,7 +196,7 @@ export default function ChatBoxWebSocket() {
         } else {
           throw new Error('API Error');
         }
-      } catch (error) {
+      } catch {
         // Fallback demo response
         const aiResponse: Message = {
           id: (Date.now() + 1).toString(),

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AdvancedAudioProcessor, AudioMetrics } from '@/utils/AdvancedAudioProcessor';
-import { TranscriptionFilter, FilterResult } from '@/utils/TranscriptionFilter';
+import { TranscriptionFilter } from '@/utils/TranscriptionFilter';
 
 interface SmartMicWebSocketProps {
   onTranscription: (text: string) => void;
@@ -154,7 +154,7 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
     });
   };
 
-  const handleWebSocketMessage = (message: any) => {
+  const handleWebSocketMessage = (message: { type: string; data?: Record<string, unknown>; message?: string }) => {
     console.log('🔍 DEBUG: Received WebSocket message type:', message.type, 'data:', message.data);
     switch (message.type) {
       case 'connected':
@@ -162,7 +162,7 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
         break;
 
       case 'vad_result':
-        const { isSpeech, confidence: vadConfidenceValue } = message.data;
+        const { isSpeech, confidence: vadConfidenceValue } = message.data as { isSpeech: boolean; confidence: number };
         setIsSpeechDetected(isSpeech);
         setVadConfidence(vadConfidenceValue);
 
@@ -212,7 +212,7 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
         break;
 
       case 'transcription':
-        const { text, isFinal, source, confidence: transcriptionConfidence } = message.data;
+        const { text, isFinal, source, confidence: transcriptionConfidence } = message.data as { text: string; isFinal: boolean; source: string; confidence: number };
         console.log('📝 Transcription received:', text, `(${source || 'unknown'})`, isFinal ? '[FINAL]' : '[PARTIAL]', `confidence: ${transcriptionConfidence || 'N/A'}`);
 
         // Update local transcription display (show partial results)
@@ -316,7 +316,7 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
       mediaStreamRef.current = stream;
 
       // Setup Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+      const audioContext = new (window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext)({
         sampleRate: 16000
       });
       audioContextRef.current = audioContext;
@@ -488,7 +488,7 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
 
     // Stop media stream
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      mediaStreamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
       mediaStreamRef.current = null;
     }
 

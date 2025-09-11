@@ -107,23 +107,7 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
 
   if (!isOpen) return null;
 
-  const getStatusColor = () => {
-    switch (voiceStatus) {
-      case 'listening': return 'text-green-600';
-      case 'processing': return 'text-blue-600';
-      case 'speaking': return 'text-purple-600';
-      default: return 'text-gray-600';
-    }
-  };
-
-  const getStatusText = () => {
-    switch (voiceStatus) {
-      case 'listening': return 'Listening...';
-      case 'processing': return 'Processing...';
-      case 'speaking': return 'Speaking...';
-      default: return 'Ready';
-    }
-  };
+  // Removed unused helper functions
 
   // Eye-Friendly Audio Visualization Component
   const AudioVisualizer = () => {

@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { WebSocketServer, WebSocket } from 'ws';
-import { IncomingMessage } from 'http';
 
 // Global WebSocket server instance
 let wss: WebSocketServer | null = null;
@@ -13,7 +12,7 @@ function initWebSocketServer() {
       perMessageDeflate: false 
     });
 
-    wss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
+    wss.on('connection', (ws: WebSocket) => {
       console.log('🔌 New WebSocket connection established');
       
       // Send welcome message
@@ -57,7 +56,7 @@ function initWebSocketServer() {
 }
 
 // Handle WebSocket messages
-async function handleWebSocketMessage(ws: WebSocket, message: any) {
+async function handleWebSocketMessage(ws: WebSocket, message: { type: string; data?: unknown }) {
   console.log('📨 Received message:', message.type);
 
   switch (message.type) {
@@ -192,7 +191,7 @@ async function processAudioChunk(ws: WebSocket, audioData: Buffer) {
 }
 
 // HTTP GET handler - for WebSocket upgrade
-export async function GET(request: NextRequest) {
+export async function GET() {
   // Initialize WebSocket server if not already done
   initWebSocketServer();
   

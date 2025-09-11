@@ -118,7 +118,7 @@ export async function GET() {
       ai_core_service: agentHealthy ? 'connected' : 'disconnected',
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({
       status: 'Chat API is running',
       ai_core_service: 'disconnected',

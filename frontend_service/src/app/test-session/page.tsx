@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import SessionInfo from '@/components/SessionInfo';
 import { useSession } from '@/hooks/useSession';
 
 export default function TestSessionPage() {
   const [testMessage, setTestMessage] = useState('');
-  const [chatResponse, setChatResponse] = useState<any>(null);
+  const [chatResponse, setChatResponse] = useState<Record<string, unknown> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
   const { sessionId } = useSession();
@@ -145,20 +146,20 @@ export default function TestSessionPage() {
           <ol className="list-decimal list-inside space-y-2 text-blue-800">
             <li>Check the session information panel to see your current session</li>
             <li>Use the session API buttons to test session management</li>
-            <li>Enter a test message and click "Test Chat API" to test the chat functionality</li>
-            <li>Check the browser's developer tools to see cookies and network requests</li>
+            <li>Enter a test message and click &quot;Test Chat API&quot; to test the chat functionality</li>
+            <li>Check the browser&apos;s developer tools to see cookies and network requests</li>
             <li>Refresh the page to test session persistence</li>
           </ol>
         </div>
         
         {/* Back to Home */}
         <div className="mt-8 text-center">
-          <a
+          <Link
             href="/"
             className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
           >
             ← Back to Home
-          </a>
+          </Link>
         </div>
       </div>
     </div>

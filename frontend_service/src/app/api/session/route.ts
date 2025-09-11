@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 /**
  * DELETE /api/session - Clear current session
  */
-export async function DELETE(request: NextRequest) {
+export async function DELETE() {
   try {
     const response = NextResponse.json({
       message: 'Session cleared',
