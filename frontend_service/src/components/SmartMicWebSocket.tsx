@@ -78,9 +78,9 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
       });
 
       transcriptionFilterRef.current = new TranscriptionFilter({
-        minConfidence: 0.7,
-        minLength: 10,
-        minWords: 2,
+        minConfidence: 0.5,  // Lowered from 0.7 to 0.5 - more permissive
+        minLength: 5,        // Lowered from 10 to 5 - allow shorter phrases
+        minWords: 1,         // Lowered from 2 to 1 - allow single meaningful words
         enableNoiseWordFilter: true,
         enableRepetitionFilter: true,
         enableLanguageFilter: true
@@ -154,15 +154,16 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
   };
 
   const handleWebSocketMessage = (message: any) => {
+    console.log('🔍 DEBUG: Received WebSocket message type:', message.type, 'data:', message.data);
     switch (message.type) {
       case 'connected':
         console.log('🎉 Server connected:', message.message);
         break;
 
       case 'vad_result':
-        const { isSpeech, confidence } = message.data;
+        const { isSpeech, confidence: vadConfidenceValue } = message.data;
         setIsSpeechDetected(isSpeech);
-        setVadConfidence(confidence);
+        setVadConfidence(vadConfidenceValue);
 
         if (isSpeech) {
           lastSpeechTimeRef.current = Date.now();
@@ -260,6 +261,7 @@ export default function SmartMicWebSocket({ onTranscription, isActive, onStatusC
             }
 
             console.log('✅ Final transcription confirmed after filtering:', finalText);
+            console.log('🚀 Calling onTranscription with:', finalText);
             lastFinalTranscriptionRef.current = finalText.trim();
             onTranscription(finalText);
             onStatusChange('speaking');

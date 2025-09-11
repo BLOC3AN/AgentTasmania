@@ -6,10 +6,15 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "build:docker": "next build",
+    "build:production": "NODE_ENV=production next build",
     "start": "next start",
+    "start:production": "NODE_ENV=production next start",
     "lint": "eslint",
     "websocket": "node websocket-server.js",
-    "dev:full": "concurrently \"npm run websocket\" \"npm run dev\""
+    "dev:full": "concurrently \"npm run websocket\" \"npm run dev\"",
+    "docker:build": "docker build -t utas-writing-practice .",
+    "docker:run": "docker run -p 3000:3000 -p 8080:8080 utas-writing-practice",
+    "docker:dev": "docker build -f Dockerfile.dev -t utas-writing-practice-dev . && docker run -p 3000:3000 -v $(pwd):/app utas-writing-practice-dev"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",

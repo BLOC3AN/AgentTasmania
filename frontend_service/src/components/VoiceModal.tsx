@@ -17,6 +17,15 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
   const [transcriptionHistory, setTranscriptionHistory] = useState<string[]>([]);
   const [audioLevel, setAudioLevel] = useState<number>(0);
 
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('🔄 VoiceModal currentTranscription changed:', currentTranscription);
+  }, [currentTranscription]);
+
+  useEffect(() => {
+    console.log('🔄 VoiceModal transcriptionHistory changed:', transcriptionHistory);
+  }, [transcriptionHistory]);
+
   // Close modal on Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -42,15 +51,21 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
 
   // Handle transcription updates
   const handleTranscription = (text: string) => {
+    console.log('🎯 VoiceModal handleTranscription called with:', text);
     setCurrentTranscription(text);
     if (text.trim()) {
+      console.log('📝 Adding to transcription history:', text);
       setTranscriptionHistory(prev => {
         const newHistory = [...prev, text];
+        console.log('📋 Updated history:', newHistory);
         // Keep only last 5 transcriptions
         return newHistory.slice(-5);
       });
       // Clear current transcription after adding to history
-      setTimeout(() => setCurrentTranscription(''), 3000);
+      setTimeout(() => {
+        console.log('🧹 Clearing current transcription');
+        setCurrentTranscription('');
+      }, 3000);
     }
     onTranscription(text);
   };
