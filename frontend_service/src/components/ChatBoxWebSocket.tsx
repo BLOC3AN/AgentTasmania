@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from '@/hooks/useSession';
 import VoiceModal from './VoiceModal';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface Message {
   id: string;
@@ -169,7 +170,8 @@ export default function ChatBoxWebSocket() {
     }
 
     // Set timeout to reset to idle if stuck
-    if (state !== 'idle') {
+    // BUT NOT for playing_tts state - let audio finish naturally
+    if (state !== 'idle' && state !== 'playing_tts') {
       processingTimeoutRef.current = setTimeout(() => {
         console.warn(`⚠️ Processing timeout in state: ${state}, resetting to idle`);
         resetToIdleState();
@@ -195,6 +197,17 @@ export default function ChatBoxWebSocket() {
     }
 
     console.log('🔄 Reset to idle state - ready for next voice input');
+  };
+
+  // Manual stop TTS function
+  const stopTTS = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setIsPlayingTTS(false);
+    resetToIdleState();
+    console.log('🛑 TTS manually stopped by user');
   };
 
   // Cleanup on unmount
@@ -330,6 +343,11 @@ export default function ChatBoxWebSocket() {
           if (isVoiceMode && data.response) {
             setProcessingStateWithTimeout('playing_tts', 60000);
             await playTTSResponse(data.response);
+
+            // After TTS is done, add AI response to voice modal history
+            if ((window as any).voiceModalHandleAIResponse) {
+              (window as any).voiceModalHandleAIResponse(text, data.response);
+            }
             // playTTSResponse will call resetToIdleState when done
           } else {
             // No TTS needed, reset to idle
@@ -353,6 +371,11 @@ export default function ChatBoxWebSocket() {
         if (isVoiceMode && aiResponse.text) {
           setProcessingStateWithTimeout('playing_tts', 60000);
           await playTTSResponse(aiResponse.text);
+
+          // After TTS is done, add AI response to voice modal history
+          if ((window as any).voiceModalHandleAIResponse) {
+            (window as any).voiceModalHandleAIResponse(text, aiResponse.text);
+          }
           // playTTSResponse will call resetToIdleState when done
         } else {
           // No TTS needed, reset to idle
@@ -368,16 +391,16 @@ export default function ChatBoxWebSocket() {
     return (
       <button
         onClick={toggleChat}
-        className="fixed bottom-6 right-6 w-16 h-16 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-all duration-200 flex items-center justify-center pointer-events-auto"
+        className="fixed bottom-4 right-4 w-14 h-14 sm:w-16 sm:h-16 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-all duration-200 flex items-center justify-center pointer-events-auto"
         style={{
           zIndex: 999999,
           position: 'fixed',
-          bottom: '24px',
-          right: '24px'
+          bottom: '16px',
+          right: '16px'
         }}
         aria-label="Open chat"
       >
-        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-6 h-6 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-3.582 8-8 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 3.582-8 8-8s8 3.582 8 8z" />
         </svg>
       </button>
@@ -386,30 +409,27 @@ export default function ChatBoxWebSocket() {
 
   return (
     <div
-      className={`fixed bg-white rounded-lg shadow-2xl border border-gray-200 transition-all duration-300 pointer-events-auto ${
-        isExpanded ? 'w-96 h-[600px]' : 'w-80 h-96'
-      } ${isVoiceMode ? 'w-[500px]' : ''}
-      sm:w-80 sm:h-96
-      ${isExpanded ? 'sm:w-96 sm:h-[600px]' : ''}
-      ${isVoiceMode ? 'sm:w-[500px]' : ''}`}
+      className={`fixed bg-white rounded-lg shadow-2xl border border-gray-200 transition-all duration-300 pointer-events-auto flex flex-col ${
+        isExpanded ? 'w-80 sm:w-96 h-[500px] sm:h-[600px]' : 'w-80 h-96'
+      } ${isVoiceMode ? 'w-80 sm:w-[500px]' : ''}`}
       style={{
         zIndex: 999999,
         position: 'fixed',
-        bottom: '24px',
-        right: '24px',
-        maxHeight: 'calc(100vh - 48px)',
-        maxWidth: 'calc(100vw - 48px)',
+        bottom: '16px',
+        right: '16px',
+        maxHeight: 'calc(100vh - 32px)',
+        maxWidth: 'calc(100vw - 32px)',
         minWidth: '280px',
         minHeight: '320px'
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-blue-600 text-white rounded-t-lg">
+      <div className="flex-shrink-0 flex items-center justify-between p-3 sm:p-4 border-b border-gray-200 bg-blue-600 text-white rounded-t-lg">
         <div className="flex items-center space-x-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-3.582 8-8 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 3.582-8 8-8s8 3.582 8 8z" />
           </svg>
-          <span className="font-medium">WebSocket VAD Assistant</span>
+          <span className="font-medium text-sm sm:text-base">UTAS Assistant</span>
         </div>
         <div className="flex items-center space-x-2">
           {/* Voice History Button */}
@@ -455,7 +475,7 @@ export default function ChatBoxWebSocket() {
 
       {/* Voice History Panel */}
       {showVoiceHistory && voiceHistory.length > 0 && (
-        <div className="border-b border-gray-200 bg-green-50 p-3">
+        <div className="flex-shrink-0 border-b border-gray-200 bg-green-50 p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
               <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -490,20 +510,27 @@ export default function ChatBoxWebSocket() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ height: isExpanded ? '480px' : '240px' }}>
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
         {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-xs px-4 py-2 rounded-lg ${
+              className={`max-w-[250px] sm:max-w-xs px-3 sm:px-4 py-2 rounded-lg text-sm ${
                 message.sender === 'user'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-800'
               }`}
             >
-              {message.text}
+              {message.sender === 'agent' ? (
+                <MarkdownRenderer
+                  content={message.text}
+                  className="text-gray-800"
+                />
+              ) : (
+                message.text
+              )}
             </div>
           </div>
         ))}
@@ -540,10 +567,17 @@ export default function ChatBoxWebSocket() {
         onTranscription={handleVoiceTranscription}
         processingState={processingState}
         onProcessingStateChange={setProcessingStateWithTimeout}
+        onAIResponse={(userInput: string, aiResponse: string) => {
+          // Use the global function to update VoiceModal
+          if ((window as any).voiceModalHandleAIResponse) {
+            (window as any).voiceModalHandleAIResponse(userInput, aiResponse);
+          }
+        }}
+        onStopTTS={stopTTS}
       />
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-200">
+      <div className="flex-shrink-0 p-3 sm:p-4 border-t border-gray-200">
         <div className="flex space-x-2">
           <input
             type="text"
@@ -551,13 +585,13 @@ export default function ChatBoxWebSocket() {
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about academic writing..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             disabled={isTyping}
           />
           <button
             onClick={toggleVoiceMode}
             disabled={processingState !== 'idle' && !isVoiceMode}
-            className={`px-3 py-2 rounded-md transition-colors ${
+            className={`flex-shrink-0 px-3 py-2 rounded-md transition-colors ${
               isVoiceMode
                 ? 'bg-green-600 text-white hover:bg-green-700'
                 : processingState !== 'idle' && !isVoiceMode
@@ -576,7 +610,7 @@ export default function ChatBoxWebSocket() {
           <button
             onClick={sendMessage}
             disabled={!inputText.trim() || isTyping}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
           >
             Send
           </button>

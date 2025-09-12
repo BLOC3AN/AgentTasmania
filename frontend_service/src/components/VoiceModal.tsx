@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import SmartMicWebSocket from './SmartMicWebSocket';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface VoiceModalProps {
   isOpen: boolean;
@@ -9,14 +10,22 @@ interface VoiceModalProps {
   onTranscription: (text: string) => void;
   processingState?: 'idle' | 'listening' | 'processing_stt' | 'processing_ai' | 'playing_tts';
   onProcessingStateChange?: (state: 'idle' | 'listening' | 'processing_stt' | 'processing_ai' | 'playing_tts', timeoutMs?: number) => void;
+  onAIResponse?: (userInput: string, aiResponse: string) => void;
+  onStopTTS?: () => void;
+}
+
+interface ConversationPair {
+  userInput: string;
+  aiResponse?: string;
+  timestamp: Date;
 }
 
 type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking';
 
-export default function VoiceModal({ isOpen, onClose, onTranscription, processingState = 'idle', onProcessingStateChange }: VoiceModalProps) {
+export default function VoiceModal({ isOpen, onClose, onTranscription, processingState = 'idle', onProcessingStateChange, onAIResponse, onStopTTS }: VoiceModalProps) {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [currentTranscription, setCurrentTranscription] = useState<string>('');
-  const [transcriptionHistory, setTranscriptionHistory] = useState<string[]>([]);
+  const [conversationHistory, setConversationHistory] = useState<ConversationPair[]>([]);
   const [audioLevel, setAudioLevel] = useState<number>(0);
 
   // Determine if mic should be available based on processing state
@@ -47,8 +56,8 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
   }, [currentTranscription]);
 
   useEffect(() => {
-    console.log('🔄 VoiceModal transcriptionHistory changed:', transcriptionHistory);
-  }, [transcriptionHistory]);
+    console.log('🔄 VoiceModal conversationHistory changed:', conversationHistory);
+  }, [conversationHistory]);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -78,11 +87,15 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
     console.log('🎯 VoiceModal handleTranscription called with:', text);
     setCurrentTranscription(text);
     if (text.trim()) {
-      console.log('📝 Adding to transcription history:', text);
-      setTranscriptionHistory(prev => {
-        const newHistory = [...prev, text];
-        console.log('📋 Updated history:', newHistory);
-        // Keep only last 5 transcriptions
+      console.log('📝 Adding user input to conversation history:', text);
+      setConversationHistory(prev => {
+        const newPair: ConversationPair = {
+          userInput: text,
+          timestamp: new Date()
+        };
+        const newHistory = [...prev, newPair];
+        console.log('📋 Updated conversation history:', newHistory);
+        // Keep only last 5 conversations
         return newHistory.slice(-5);
       });
       // Clear current transcription after adding to history
@@ -94,9 +107,31 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
     onTranscription(text);
   };
 
-  // Clear transcription history
+  // Handle AI response updates
+  const handleAIResponse = (userInput: string, aiResponse: string) => {
+    console.log('🤖 VoiceModal handleAIResponse called:', { userInput, aiResponse });
+    setConversationHistory((prev: ConversationPair[]) => {
+      const newHistory = prev.map((pair: ConversationPair) =>
+        pair.userInput === userInput && !pair.aiResponse
+          ? { ...pair, aiResponse }
+          : pair
+      );
+      console.log('📋 Updated conversation history with AI response:', newHistory);
+      return newHistory;
+    });
+  };
+
+  // Expose handleAIResponse to parent
+  useEffect(() => {
+    if (onAIResponse) {
+      // This is a bit of a hack, but we need to expose the function to parent
+      (window as any).voiceModalHandleAIResponse = handleAIResponse;
+    }
+  }, [onAIResponse]);
+
+  // Clear conversation history
   const clearHistory = () => {
-    setTranscriptionHistory([]);
+    setConversationHistory([]);
     setCurrentTranscription('');
   };
 
@@ -162,25 +197,25 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Modal Content - Two Column Layout */}
-      <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+      {/* Modal Content - Responsive Layout */}
+      <div className="relative w-full max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-3 sm:p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-2 sm:space-x-3">
             <div className={`w-3 h-3 rounded-full ${
               voiceStatus === 'listening' ? 'bg-green-400 animate-pulse' :
               voiceStatus === 'processing' ? 'bg-yellow-400 animate-spin' :
               voiceStatus === 'speaking' ? 'bg-purple-400 animate-bounce' :
               'bg-gray-300'
             }`} />
-            <h2 className="text-lg font-semibold">Voice Assistant</h2>
+            <h2 className="text-base sm:text-lg font-semibold">Voice Assistant</h2>
           </div>
           <button
             onClick={onClose}
@@ -193,10 +228,10 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
           </button>
         </div>
 
-        {/* Main Content - Two Column Layout */}
-        <div className="flex">
-          {/* Left Column - Voice Interface */}
-          <div className="flex-1 p-6 border-r border-gray-200">
+        {/* Main Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          {/* Voice Interface */}
+          <div className="w-full">
             {/* Audio Visualizer */}
             <div className="text-center mb-6">
               <div className="mb-4">
@@ -210,7 +245,20 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
                 {processingState === 'listening' && 'Listening to your voice...'}
                 {processingState === 'processing_stt' && 'Processing speech...'}
                 {processingState === 'processing_ai' && 'AI is thinking...'}
-                {processingState === 'playing_tts' && 'Playing response...'}
+                {processingState === 'playing_tts' && (
+                  <span className="flex items-center justify-center space-x-2">
+                    <span>Playing response...</span>
+                    {onStopTTS && (
+                      <button
+                        onClick={onStopTTS}
+                        className="ml-2 px-2 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors"
+                        title="Stop audio"
+                      >
+                        Stop
+                      </button>
+                    )}
+                  </span>
+                )}
                 {!isMicAvailable && 'Mic unavailable - processing...'}
               </p>
             </div>
@@ -241,103 +289,104 @@ export default function VoiceModal({ isOpen, onClose, onTranscription, processin
               />
             </div>
 
-            {/* Current Transcription - Compact */}
+            {/* Current Transcription */}
+            {currentTranscription && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center space-x-2 mb-1">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-medium text-blue-700">Detecting...</span>
+                </div>
+                <p className="text-blue-800 text-sm">{currentTranscription}</p>
+              </div>
+            )}
+
+            {/* Conversation History */}
             <div className="mt-6">
-              {/* Current Transcription */}
-              {currentTranscription && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-medium text-blue-700">Detecting...</span>
-                  </div>
-                  <p className="text-blue-800 text-sm">{currentTranscription}</p>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-700">Conversation History</span>
+                  {conversationHistory.length > 0 && (
+                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                      {conversationHistory.length}
+                    </span>
+                  )}
                 </div>
-              )}
-
-              {/* Latest Result */}
-              {transcriptionHistory.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-green-700">Latest Result</span>
-                  </div>
-                  <p className="text-green-800 text-sm bg-white rounded p-2 border border-green-100">
-                    &ldquo;{transcriptionHistory[transcriptionHistory.length - 1]}&rdquo;
-                  </p>
-                </div>
-              )}
-
-              {/* Empty State */}
-              {!currentTranscription && transcriptionHistory.length === 0 && (
-                <div className="text-center py-6">
-                  <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    </svg>
-                  </div>
-                  <p className="text-gray-500 text-xs">Start speaking to see transcription</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Column - Voice History */}
-          <div className="w-80 bg-gray-50 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center space-x-2">
-                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-700">Voice History</span>
-                {transcriptionHistory.length > 0 && (
-                  <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                    {transcriptionHistory.length}
-                  </span>
+                {conversationHistory.length > 0 && (
+                  <button
+                    onClick={clearHistory}
+                    className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded transition-colors"
+                    title="Clear all history"
+                  >
+                    Clear
+                  </button>
                 )}
               </div>
-              {transcriptionHistory.length > 0 && (
-                <button
-                  onClick={clearHistory}
-                  className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded transition-colors"
-                  title="Clear all history"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
 
-            {/* History List */}
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {transcriptionHistory.length > 0 ? (
-                transcriptionHistory.map((text, index) => (
-                  <div key={index} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
-                    <div className="flex items-start justify-between mb-1">
-                      <span className="text-xs text-gray-500 font-medium">#{index + 1}</span>
-                      <span className="text-xs text-gray-400">
-                        {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+              {/* History List - Improved scrolling */}
+              <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                {conversationHistory.length > 0 ? (
+                  conversationHistory.map((conversation: ConversationPair, index: number) => (
+                    <div key={index} className="bg-white rounded-lg p-3 border border-gray-200 shadow-sm">
+                      <div className="flex items-start justify-between mb-2">
+                        <span className="text-xs text-gray-500 font-medium">#{index + 1}</span>
+                        <span className="text-xs text-gray-400">
+                          {conversation.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      {/* User Input */}
+                      <div className="mb-2">
+                        <div className="flex items-center space-x-1 mb-1">
+                          <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                          <span className="text-xs text-blue-600 font-medium">You</span>
+                        </div>
+                        <p className="text-sm text-gray-800 leading-relaxed bg-blue-50 rounded p-2">
+                          &ldquo;{conversation.userInput}&rdquo;
+                        </p>
+                      </div>
+
+                      {/* AI Response */}
+                      {conversation.aiResponse && (
+                        <div>
+                          <div className="flex items-center space-x-1 mb-1">
+                            <svg className="w-3 h-3 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-xs text-green-600 font-medium">AI</span>
+                          </div>
+                          <div className="bg-green-50 rounded p-2">
+                            <MarkdownRenderer
+                              content={conversation.aiResponse}
+                              className="text-gray-800"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-sm text-gray-800 leading-relaxed">
-                      &ldquo;{text}&rdquo;
-                    </p>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-12 h-12 mx-auto mb-3 bg-gray-200 rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-500 text-xs">No conversation history yet</p>
+                    <p className="text-gray-400 text-xs mt-1">Start speaking to build history</p>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 mx-auto mb-3 bg-gray-200 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    </svg>
-                  </div>
-                  <p className="text-gray-500 text-xs">No voice history yet</p>
-                  <p className="text-gray-400 text-xs mt-1">Start speaking to build history</p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Footer - Minimal */}
-        <div className="bg-gray-50 px-6 py-3 border-t text-center">
+        <div className="flex-shrink-0 bg-gray-50 px-4 sm:px-6 py-2 sm:py-3 border-t text-center">
           <p className="text-xs text-gray-500">
             Press <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Esc</kbd> to close
           </p>
