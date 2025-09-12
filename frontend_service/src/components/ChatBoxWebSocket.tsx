@@ -29,8 +29,10 @@ export default function ChatBoxWebSocket() {
   const [voiceHistory, setVoiceHistory] = useState<VoiceHistory[]>([]);
   const [showVoiceHistory, setShowVoiceHistory] = useState(false);
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
+  const [processingState, setProcessingState] = useState<'idle' | 'listening' | 'processing_stt' | 'processing_ai' | 'playing_tts'>('idle');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -145,6 +147,8 @@ export default function ChatBoxWebSocket() {
   const closeVoiceModal = () => {
     setIsVoiceMode(false);
     setShowVoiceModal(false);
+    // Reset to idle state when closing modal
+    resetToIdleState();
   };
 
   const toggleVoiceHistory = () => {
@@ -154,6 +158,56 @@ export default function ChatBoxWebSocket() {
   const clearVoiceHistory = () => {
     setVoiceHistory([]);
   };
+
+  // Processing State Management
+  const setProcessingStateWithTimeout = (state: typeof processingState, timeoutMs: number = 30000) => {
+    setProcessingState(state);
+
+    // Clear existing timeout
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current);
+    }
+
+    // Set timeout to reset to idle if stuck
+    if (state !== 'idle') {
+      processingTimeoutRef.current = setTimeout(() => {
+        console.warn(`⚠️ Processing timeout in state: ${state}, resetting to idle`);
+        resetToIdleState();
+      }, timeoutMs);
+    }
+  };
+
+  const resetToIdleState = () => {
+    setProcessingState('idle');
+    setIsTyping(false);
+    setIsPlayingTTS(false);
+
+    // Stop any playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    // Clear timeout
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current);
+      processingTimeoutRef.current = null;
+    }
+
+    console.log('🔄 Reset to idle state - ready for next voice input');
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
 
   // TTS Service Integration
   const playTTSResponse = async (text: string) => {
@@ -193,12 +247,14 @@ export default function ChatBoxWebSocket() {
           setIsPlayingTTS(false);
           URL.revokeObjectURL(audioUrl);
           console.log('🎵 TTS playback completed');
+          resetToIdleState();
         };
 
         audio.onerror = () => {
           setIsPlayingTTS(false);
           URL.revokeObjectURL(audioUrl);
           console.error('❌ TTS playback error');
+          resetToIdleState();
         };
 
         await audio.play();
@@ -209,11 +265,21 @@ export default function ChatBoxWebSocket() {
     } catch (error) {
       console.error('❌ TTS Error:', error);
       setIsPlayingTTS(false);
+      resetToIdleState();
     }
   };
 
-  const handleVoiceTranscription = (text: string) => {
+  const handleVoiceTranscription = async (text: string) => {
     console.log('📝 Voice transcription received:', text);
+
+    // Check if we're in a state that can accept new input
+    if (processingState !== 'idle' && processingState !== 'listening') {
+      console.warn('⚠️ Voice input ignored - currently processing:', processingState);
+      return;
+    }
+
+    // Set to processing STT state
+    setProcessingStateWithTimeout('processing_stt', 5000);
 
     // Add to voice history
     const voiceEntry: VoiceHistory = {
@@ -231,8 +297,9 @@ export default function ChatBoxWebSocket() {
       timestamp: new Date()
     };
     setMessages(prev => [...prev, userMessage]);
-    
-    // Send to AI for processing (same as text input)
+
+    // Set to processing AI state
+    setProcessingStateWithTimeout('processing_ai', 30000);
     setIsTyping(true);
     
     setTimeout(async () => {
@@ -260,12 +327,18 @@ export default function ChatBoxWebSocket() {
 
           // Play TTS response if in voice mode
           if (isVoiceMode && data.response) {
+            setProcessingStateWithTimeout('playing_tts', 60000);
             await playTTSResponse(data.response);
+            // playTTSResponse will call resetToIdleState when done
+          } else {
+            // No TTS needed, reset to idle
+            resetToIdleState();
           }
         } else {
           throw new Error('API Error');
         }
-      } catch {
+      } catch (error) {
+        console.error('❌ AI API Error:', error);
         // Fallback demo response
         const aiResponse: Message = {
           id: (Date.now() + 1).toString(),
@@ -277,7 +350,12 @@ export default function ChatBoxWebSocket() {
 
         // Play TTS response if in voice mode
         if (isVoiceMode && aiResponse.text) {
+          setProcessingStateWithTimeout('playing_tts', 60000);
           await playTTSResponse(aiResponse.text);
+          // playTTSResponse will call resetToIdleState when done
+        } else {
+          // No TTS needed, reset to idle
+          resetToIdleState();
         }
       } finally {
         setIsTyping(false);
@@ -459,6 +537,8 @@ export default function ChatBoxWebSocket() {
         isOpen={showVoiceModal}
         onClose={closeVoiceModal}
         onTranscription={handleVoiceTranscription}
+        processingState={processingState}
+        onProcessingStateChange={setProcessingStateWithTimeout}
       />
 
       {/* Input */}
@@ -475,12 +555,18 @@ export default function ChatBoxWebSocket() {
           />
           <button
             onClick={toggleVoiceMode}
+            disabled={processingState !== 'idle' && !isVoiceMode}
             className={`px-3 py-2 rounded-md transition-colors ${
-              isVoiceMode 
-                ? 'bg-green-600 text-white hover:bg-green-700' 
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              isVoiceMode
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : processingState !== 'idle' && !isVoiceMode
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
-            title="WebSocket VAD Voice Assistant"
+            title={processingState !== 'idle' && !isVoiceMode
+              ? `Voice unavailable - ${processingState.replace('_', ' ')}`
+              : "WebSocket VAD Voice Assistant"
+            }
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />

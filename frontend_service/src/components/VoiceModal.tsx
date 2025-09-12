@@ -7,15 +7,39 @@ interface VoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTranscription: (text: string) => void;
+  processingState?: 'idle' | 'listening' | 'processing_stt' | 'processing_ai' | 'playing_tts';
+  onProcessingStateChange?: (state: 'idle' | 'listening' | 'processing_stt' | 'processing_ai' | 'playing_tts', timeoutMs?: number) => void;
 }
 
 type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking';
 
-export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceModalProps) {
+export default function VoiceModal({ isOpen, onClose, onTranscription, processingState = 'idle', onProcessingStateChange }: VoiceModalProps) {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [currentTranscription, setCurrentTranscription] = useState<string>('');
   const [transcriptionHistory, setTranscriptionHistory] = useState<string[]>([]);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+
+  // Determine if mic should be available based on processing state
+  const isMicAvailable = processingState === 'idle' || processingState === 'listening';
+
+  // Update voice status based on processing state
+  useEffect(() => {
+    switch (processingState) {
+      case 'idle':
+        setVoiceStatus('idle');
+        break;
+      case 'listening':
+        setVoiceStatus('listening');
+        break;
+      case 'processing_stt':
+      case 'processing_ai':
+        setVoiceStatus('processing');
+        break;
+      case 'playing_tts':
+        setVoiceStatus('speaking');
+        break;
+    }
+  }, [processingState]);
 
   // Debug logging for state changes
   useEffect(() => {
@@ -182,20 +206,31 @@ export default function VoiceModal({ isOpen, onClose, onTranscription }: VoiceMo
                 Speak naturally
               </h3>
               <p className="text-sm text-gray-600">
-                {voiceStatus === 'idle' && 'Ready to listen...'}
-                {voiceStatus === 'listening' && 'Listening to your voice...'}
-                {voiceStatus === 'processing' && 'Processing speech...'}
-                {voiceStatus === 'speaking' && 'Transcription complete!'}
+                {processingState === 'idle' && 'Ready to listen...'}
+                {processingState === 'listening' && 'Listening to your voice...'}
+                {processingState === 'processing_stt' && 'Processing speech...'}
+                {processingState === 'processing_ai' && 'AI is thinking...'}
+                {processingState === 'playing_tts' && 'Playing response...'}
+                {!isMicAvailable && 'Mic unavailable - processing...'}
               </p>
             </div>
 
             {/* Hidden SmartMicWebSocket Component */}
             <div className="hidden">
               <SmartMicWebSocket
-                isActive={isOpen}
+                isActive={isOpen && isMicAvailable}
                 onTranscription={handleTranscription}
                 onStatusChange={(status) => {
-                  setVoiceStatus(status);
+                  // Only update status if mic is available
+                  if (isMicAvailable) {
+                    setVoiceStatus(status);
+                    // Notify parent about listening state
+                    if (status === 'listening' && onProcessingStateChange) {
+                      onProcessingStateChange('listening');
+                    } else if (status === 'idle' && processingState === 'listening' && onProcessingStateChange) {
+                      onProcessingStateChange('idle');
+                    }
+                  }
                   // Simulate audio level for visualization
                   if (status === 'listening') {
                     setAudioLevel(Math.random() * 40 + 10);
