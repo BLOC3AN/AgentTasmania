@@ -457,7 +457,14 @@ wss.on('connection', (ws) => {
         const message = JSON.parse(data.toString());
 
         // Handle audio-related commands only
-        if (message.type === 'stop_recording' && isRecording) {
+        if (message.type === 'start_recording') {
+          console.log('🎤 Manual start recording requested');
+          if (!isRecording) {
+            isRecording = true;
+            audioBuffer = [];
+            console.log('🎤 Started recording audio for external ASR (manual trigger)');
+          }
+        } else if (message.type === 'stop_recording' && isRecording) {
           isRecording = false;
           console.log('🛑 Stopped recording, processing complete audio...');
 

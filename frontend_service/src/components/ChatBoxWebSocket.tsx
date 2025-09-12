@@ -217,7 +217,8 @@ export default function ChatBoxWebSocket() {
       setIsPlayingTTS(true);
       console.log('🎵 Calling TTS service for text:', text);
 
-      const response = await fetch('http://localhost:8007/synthesize', {
+      const ttsUrl = process.env.NEXT_PUBLIC_TTS_URL || 'http://localhost:8007';
+      const response = await fetch(`${ttsUrl}/synthesize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -99,19 +99,22 @@ services:
   # Frontend Service
   frontend:
     container_name: service-frontend
-    image: vanhoadotbui2628/frontend:v1.0.2
+    image: vanhoadotbui2628/frontend:1.2.5
     ports:
       - "3000:3000"
+      - "8080:8080"
     environment:
       - NEXT_PUBLIC_API_URL=http://ai-core:8000
       - NEXT_PUBLIC_WEBSOCKET_URL=ws://websocket:8003
+      - NEXT_PUBLIC_TTS_URL=http://tts:8007
     networks:
       - agent-network
     restart: unless-stopped
     depends_on:
       - ai-core
       - websocket
-      - mcp-server # thêm depends_on để đảm bảo mcp-server khởi động trước
+      - mcp-server
+      - tts
 
   # Postgres Service
   postgres:
@@ -176,7 +179,7 @@ services:
   # Text-to-Speech Service
   tts:
     container_name: service-tts
-    image: vanhoadotbui2628/tts:v1.0.0
+    image: vanhoadotbui2628/tts:1.2.0
     ports:
       - "8007:8007"
     environment:
