@@ -173,6 +173,25 @@ services:
     networks:
       - agent-network
 
+  # Text-to-Speech Service
+  tts:
+    container_name: service-tts
+    image: vanhoadotbui2628/tts:v1.0.0
+    ports:
+      - "8007:8007"
+    environment:
+      - API_PORT=8007
+    env_file:
+      - .env
+    networks:
+      - agent-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   agent-network:

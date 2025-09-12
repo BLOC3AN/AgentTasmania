@@ -28,7 +28,9 @@ export default function ChatBoxWebSocket() {
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   const [voiceHistory, setVoiceHistory] = useState<VoiceHistory[]>([]);
   const [showVoiceHistory, setShowVoiceHistory] = useState(false);
+  const [isPlayingTTS, setIsPlayingTTS] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -86,6 +88,11 @@ export default function ChatBoxWebSocket() {
         };
         console.log("🚀 ~ sendMessage ~ agentMessage:", agentMessage)
         setMessages((prev: Message[]) => [...prev, agentMessage]);
+
+        // Play TTS response if in voice mode
+        if (isVoiceMode && data.response) {
+          await playTTSResponse(data.response);
+        }
       } else {
         const errorMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -148,6 +155,63 @@ export default function ChatBoxWebSocket() {
     setVoiceHistory([]);
   };
 
+  // TTS Service Integration
+  const playTTSResponse = async (text: string) => {
+    if (!text.trim() || !isVoiceMode) return;
+
+    try {
+      setIsPlayingTTS(true);
+      console.log('🎵 Calling TTS service for text:', text);
+
+      const response = await fetch('http://localhost:8007/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text,
+          voice: 'coral',
+          response_format: 'mp3',
+          speed: 1.0
+        }),
+      });
+
+      if (response.ok) {
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        // Create and play audio
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          setIsPlayingTTS(false);
+          URL.revokeObjectURL(audioUrl);
+          console.log('🎵 TTS playback completed');
+        };
+
+        audio.onerror = () => {
+          setIsPlayingTTS(false);
+          URL.revokeObjectURL(audioUrl);
+          console.error('❌ TTS playback error');
+        };
+
+        await audio.play();
+        console.log('🎵 TTS playback started');
+      } else {
+        throw new Error(`TTS service error: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ TTS Error:', error);
+      setIsPlayingTTS(false);
+    }
+  };
+
   const handleVoiceTranscription = (text: string) => {
     console.log('📝 Voice transcription received:', text);
 
@@ -193,6 +257,11 @@ export default function ChatBoxWebSocket() {
             timestamp: new Date(),
           };
           setMessages((prev: Message[]) => [...prev, agentMessage]);
+
+          // Play TTS response if in voice mode
+          if (isVoiceMode && data.response) {
+            await playTTSResponse(data.response);
+          }
         } else {
           throw new Error('API Error');
         }
@@ -205,6 +274,11 @@ export default function ChatBoxWebSocket() {
           timestamp: new Date()
         };
         setMessages(prev => [...prev, aiResponse]);
+
+        // Play TTS response if in voice mode
+        if (isVoiceMode && aiResponse.text) {
+          await playTTSResponse(aiResponse.text);
+        }
       } finally {
         setIsTyping(false);
       }
@@ -361,6 +435,18 @@ export default function ChatBoxWebSocket() {
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              </div>
+            </div>
+          </div>
+        )}
+        {isPlayingTTS && (
+          <div className="flex justify-start">
+            <div className="bg-green-100 text-green-800 px-4 py-2 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                </svg>
+                <span className="text-sm">Playing audio response...</span>
               </div>
             </div>
           </div>

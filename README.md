@@ -169,6 +169,7 @@ npm run dev
 - ✅ **WebSocket**: Real-time communication với agent routing
 - ✅ **Monitor**: System health & logging dashboard
 - ✅ **Frontend**: Next.js TypeScript UI với hot reload
+- ✅ **Text-to-Speech**: OpenAI TTS service với voice response
 
 ### Academic Writing Features
 - ✅ **Agent Routing**: Tự động route chat qua Academic Writing Assistant
@@ -208,6 +209,7 @@ curl http://localhost:8002/health  # Vector Database
 curl http://localhost:8003/health  # WebSocket (với agent distribution)
 curl http://localhost:8004/health  # Monitor
 curl http://localhost:8005/health  # Embedding Service
+curl http://localhost:8007/health  # Text-to-Speech Service
 curl http://localhost:3000/api/chat # Frontend API Health
 ```
 
@@ -260,6 +262,33 @@ curl -X POST http://localhost:8002/hybrid-search \
 - User-specific filtering support
 - Configurable score thresholds and result limits
 
+### Text-to-Speech API
+
+**New Feature**: Text-to-Speech service using OpenAI TTS API for voice responses in UI popup mode.
+
+**Endpoints**:
+```bash
+# Synthesize speech from text
+curl -X POST "http://localhost:8007/synthesize" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "voice": "coral", "response_format": "mp3"}'
+
+# Synthesize from AI response format
+curl -X POST "http://localhost:8007/synthesize-from-ai-response" \
+  -H "Content-Type: application/json" \
+  -d '{"llmOutput": "AI response text"}'
+
+# Get available voices
+curl http://localhost:8007/voices
+```
+
+**Features**:
+- Multiple voice options (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer)
+- Multiple audio formats (mp3, opus, aac, flac, wav, pcm)
+- Speed control (0.25x to 4.0x)
+- Automatic integration with voice modal in frontend
+- Real-time audio playback in UI popup mode
+
 ### Service Logs
 ```bash
 # Individual service logs
@@ -270,6 +299,7 @@ docker compose logs -f websocket
 docker compose logs -f monitor
 docker compose logs -f frontend
 docker compose logs -f embedding
+docker compose logs -f tts
 
 # Real-time log viewer (recommended)
 # Access: http://localhost:5555
