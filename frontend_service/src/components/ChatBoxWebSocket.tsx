@@ -230,19 +230,37 @@ export default function ChatBoxWebSocket() {
       setIsPlayingTTS(true);
       console.log('🎵 Calling TTS service for text:', text);
 
-      const ttsUrl = process.env.NEXT_PUBLIC_TTS_URL || 'http://localhost:8007';
-      const response = await fetch(`${ttsUrl}/synthesize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: text,
-          voice: 'coral',
-          response_format: 'mp3',
-          speed: 1.0
-        }),
-      });
+        // Try API route first (for containerized environment), fallback to direct URL
+      let response;
+      try {
+        response = await fetch('/api/tts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: text,
+            voice: 'coral',
+            response_format: 'mp3',
+            speed: 1.0
+          }),
+        });
+      } catch (apiError) {
+        console.log('🔄 API route failed, trying direct TTS URL...');
+        const ttsUrl = process.env.NEXT_PUBLIC_TTS_URL || 'http://localhost:8007';
+        response = await fetch(`${ttsUrl}/synthesize`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: text,
+            voice: 'coral',
+            response_format: 'mp3',
+            speed: 1.0
+          }),
+        });
+      }
 
       if (response.ok) {
         const audioBlob = await response.blob();

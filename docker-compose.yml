@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # AI Core Agent Service
   ai-core:
@@ -128,6 +130,7 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - NEXT_PUBLIC_WEBSOCKET_URL=ws://localhost:8003
+      - NEXT_PUBLIC_TTS_URL=http://localhost:8007
     networks:
       - agent-network
     restart: unless-stopped
@@ -146,6 +149,11 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: Hai@30032000
       POSTGRES_DB: mydb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agent-network
+    restart: unless-stopped
     # Optional: Redis for caching (future use)
     
   redis:
@@ -154,7 +162,7 @@ services:
     ports:
       - "6389:6379"
     volumes:
-      - ../data/redis:/data
+      - redis_data:/data
     restart: unless-stopped
     networks:
       - agent-network
@@ -172,7 +180,7 @@ services:
       - 6334 # For gRPC
       - 6335 # For internal communication
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     networks:
       - agent-network
 
@@ -222,7 +230,7 @@ services:
     environment:
       - API_PORT=8007
     env_file:
-      - ./text-to-speech/.env
+      - .env
     networks:
       - agent-network
     restart: unless-stopped
@@ -260,4 +268,10 @@ networks:
 
 volumes:
   logs:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  qdrant_data:
     driver: local
